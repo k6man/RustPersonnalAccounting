@@ -1,0 +1,136 @@
+# Mars 2026.
+
+# ---- Prélèvements automatiques ---------------------------------------------
+2026-03-02 * "Propriete Paris XII" "Loyer et charges"
+  Assets:Banque:CompteCourant     -1120.50 EUR
+  Expenses:Logement:Loyer-Credit   1050.00 EUR
+  Expenses:Logement:Charges-Copro    70.50 EUR
+
+2026-03-02 * "Orange" "Accès internet mars"
+  Assets:Banque:CompteCourant      -31.99 EUR
+  Expenses:Logement:Internet        31.99 EUR
+
+2026-03-02 * "SFR" "Forfaits mobiles mars"
+  Assets:Banque:CompteCourant      -25.98 EUR
+  Expenses:Logement:Mobiles         12.99 EUR
+  Expenses:Logement:Mobiles         12.99 EUR
+
+2026-03-03 * "GDF" "Gaz mars"
+  Assets:Banque:CompteCourant      -68.40 EUR
+  Expenses:Logement:Gaz             68.40 EUR
+
+2026-03-03 * "EDF" "Électricité mars"
+  Assets:Banque:CompteCourant      -89.90 EUR
+  Expenses:Logement:Electricite     89.90 EUR
+
+2026-03-03 * "Régie de l'eau" "Eau mars"
+  Assets:Banque:CompteCourant      -22.40 EUR
+  Expenses:Logement:Eau             22.40 EUR
+
+2026-03-05 * "Mutuelle" "Cotisation mars"
+  Assets:Banque:CompteCourant     -156.20 EUR
+  Expenses:Sante:Mutuelle          156.20 EUR
+
+2026-03-06 * "Club Culture Loisirs" "Abonnement sport mars"
+  Assets:Banque:CompteCourant      -29.90 EUR
+  Expenses:Loisirs:Sport            29.90 EUR
+
+2026-03-08 * "Netflix" "Abonnement mars"
+  Assets:Banque:CompteCourant      -13.49 EUR
+  Expenses:Loisirs:Abonnements      13.49 EUR
+
+2026-03-10 * "Deezer" "Abonnement mars"
+  Assets:Banque:CompteCourant       -7.99 EUR
+  Expenses:Loisirs:Abonnements       7.99 EUR
+
+2026-03-13 * "DGFiP" "Prélèvement à la source mars"
+  Assets:Banque:CompteCourant     -420.00 EUR
+  Expenses:Impots:Impot-Revenu     420.00 EUR
+
+# ---- Revenus ----------------------------------------------------------------
+2026-03-04 * "CAF" "Allocations familiales mars"
+  Assets:Banque:CompteCourant      155.00 EUR
+  Income:Allocations-Familiales   -155.00 EUR
+
+2026-03-26 * "Employeur Conjoint-1" "Salaire mars"
+  Assets:Banque:CompteCourant     2350.00 EUR
+  Income:Salaires:Conjoint-1     -2350.00 EUR
+
+2026-03-27 * "Employeur Conjoint-2" "Salaire mars"
+  Assets:Banque:CompteCourant     1890.00 EUR
+  Income:Salaires:Conjoint-2     -1890.00 EUR
+
+2026-03-20 * "Mutuelle" "Remboursement soins (dentiste mars)"
+  Assets:Banque:CompteCourant       68.40 EUR
+  Income:Remboursements-Sante      -68.40 EUR
+
+# ---- Alimentation -----------------------------------------------------------
+2026-03-03 * "Carrefour" "Courses mars"
+  Assets:Banque:CompteCourant      -88.40 EUR
+  Expenses:Alimentation:Courses     88.40 EUR
+
+2026-03-15 * "Carrefour" "Courses mars"
+  Assets:Banque:CompteCourant     -169.30 EUR
+  Expenses:Alimentation:Courses    169.30 EUR
+
+2026-03-21 * "Leclerc" "Courses mars"
+  Assets:Banque:CompteCourant      -52.15 EUR
+  Expenses:Alimentation:Courses     52.15 EUR
+
+2026-03-07 * "Le Jardin Gourmand" "Dîner anniversaire Laurent" #sorties
+  Assets:Banque:CompteCourant      -72.60 EUR
+  Expenses:Alimentation:Restaurants 72.60 EUR
+
+# ---- Transport / enfants / santé --------------------------------------------
+2026-03-06 * "TotalEnergies" "Plein mars"
+  Assets:Banque:CompteCourant      -71.30 EUR
+  Expenses:Transport:Carburant      71.30 EUR
+
+2026-03-05 * "Collège Molière" "Cantine mars"
+  Assets:Banque:CompteCourant      -34.50 EUR
+  Expenses:Enfants:Cantine-Scolaire 34.50 EUR
+
+2026-03-05 * "Collège Molière" "Périscolaire mars"
+  Assets:Banque:CompteCourant      -28.00 EUR
+  Expenses:Enfants:Periscolaire     28.00 EUR
+
+2026-03-09 * "Asso Gym Kidz" "Inscription gymnastique printemps" #enfants-activites
+  Assets:Banque:CompteCourant      -45.00 EUR
+  Expenses:Enfants:Activites-Sport-Culture 45.00 EUR
+
+2026-03-18 * "Pharmacie Centrale" "Ordonnance"
+  Assets:Banque:CompteCourant      -23.75 EUR
+  Expenses:Sante:Pharmacie          23.75 EUR
+
+2026-03-18 * "Cabinet Dentaire Dupont" "Consultation + détartrage"
+  Assets:Banque:CompteCourant      -89.00 EUR
+  Expenses:Sante:Dentiste-Optique   89.00 EUR
+
+2026-03-17 * "Salon L'Angora" "Coupe + soins"
+  Assets:Banque:CompteCourant      -24.90 EUR
+  Expenses:Soins-Personnels         24.90 EUR
+
+2026-03-12 * "Decathlon" "Veste + chaussures de marche"
+  Assets:Banque:CompteCourant      -79.99 EUR
+  Expenses:Habillement              79.99 EUR
+
+# ---- Vacances ---------------------------------------------------------------
+# Réservation d'été (acompte) : tag et lien partagés avec les échéances à venir.
+2026-03-28 ! "Camping Les Genêts" "Acompte séjour été 2026" #vacances-2026 ^sejour-ete-2026
+  Assets:Banque:CompteCourant     -640.00 EUR
+  Expenses:Vacances                640.00 EUR
+
+2026-03-31 * "Banque" "Frais de tenue de compte"
+  Assets:Banque:CompteCourant       -4.90 EUR
+  Expenses:Frais-Bancaires           4.90 EUR
+
+# ---- Épargne ----------------------------------------------------------------
+2026-03-27 * "Virement épargne" "Objectifs mensuels"
+  Assets:Banque:CompteCourant     -300.00 EUR
+  Assets:Epargne:LivretA           200.00 EUR
+  Assets:Epargne:LDD               100.00 EUR
+
+# ---- Contrôle ---------------------------------------------------------------
+2026-04-01 balance Assets:Banque:CompteCourant 6877.39 EUR
+2026-04-01 balance Assets:Epargne:LivretA     19602.49 EUR
+2026-04-01 balance Assets:Epargne:LDD         10466.99 EUR

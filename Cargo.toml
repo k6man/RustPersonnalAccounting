@@ -1,0 +1,54 @@
+[workspace]
+resolver = "2"
+members = [
+  "crates/household-core",
+  "crates/household-budget",
+  "crates/household-git",
+  "crates/household-gui",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "GPL-3.0-only"
+rust-version = "1.98"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+
+[workspace.dependencies]
+# Moteur beancount — épinglé exactement : l'API interne évolue vite
+# (cf. TODO.md « Questions ouvertes » #8 ; cargo update sauf après lecture du CHANGELOG).
+rustledger-core = "=0.24.0"
+rustledger-parser = "=0.24.0"
+rustledger-loader = "=0.24.0"
+rustledger-booking = "=0.24.0"
+rustledger-validate = "=0.24.0"
+rustledger-budget = "=0.24.0"
+
+# Types de domaine — réutilisés tels quels (aucune conversion aux frontières).
+rust_decimal = "1.43"
+jiff = "0.2"
+
+# Outils transverses.
+thiserror = "2"
+anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+toml = "1"
+
+# Git en-processus (statut/commit/historique) — choice documented in /docs (M7).
+git2 = "0.21"
+# Watcher du répertoire ledger (J4).
+notify = "8.2"
+
+# GUI.
+eframe = "0.37"
+egui = "0.37"
+egui_plot = "0.38"
+egui_extras = "0.37"
+
+[profile.release]
+lto = "thin"

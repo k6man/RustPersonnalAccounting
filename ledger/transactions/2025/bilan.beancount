@@ -1,0 +1,27 @@
+# Exercice 2025 — uniquement les faits structurants :
+# soldes d'ouverture (venus de la comptabilité antérieure) et intérêts annuels.
+# Les dépenses 2025 ne sont pas prises ici ; l'exemple démarre en détail en 2026.
+
+# ---- Ouverture --------------------------------------------------------------
+2025-01-01 * "Ouverture des comptes" "Reprise des soldes au 2025-01-01"
+  Assets:Banque:CompteCourant    2845.23 EUR
+  Assets:Epargne:LivretA        18450.12 EUR
+  Assets:Epargne:LDD             9870.55 EUR
+  Equity:Soldes-Ouverture      -31165.90 EUR
+
+# ---- Intérêts annuels (exonérés d'IR, crédités au 31/12) --------------------
+2025-12-31 * "Livret A" "Intérêts 2025 (BNP) — non imposables"
+  Assets:Epargne:LivretA      552.37 EUR
+  Income:Interets:Livret-A   -552.37 EUR
+
+2025-12-31 * "LDD" "Intérêts 2025 (Crédit Agricole) — non imposables"
+  Assets:Epargne:LDD          296.44 EUR
+  Income:Interets:LDD        -296.44 EUR
+
+# ---- Assertions de clôture --------------------------------------------------
+# Sémantique beancount v3 : une assertion `balance` à la date D est vérifiée À
+# 00:00 de D (strictement avant les transactions de D). Après le dernier mois
+# 2025, la clôture se vérifie donc le 2026-01-01.
+2026-01-01 balance Assets:Banque:CompteCourant 2845.23 EUR
+2026-01-01 balance Assets:Epargne:LivretA     19002.49 EUR
+2026-01-01 balance Assets:Epargne:LDD         10166.99 EUR

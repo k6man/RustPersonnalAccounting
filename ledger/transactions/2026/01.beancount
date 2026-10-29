@@ -1,0 +1,125 @@
+# Janvier 2026.
+
+# ---- Prélèvements automatiques ---------------------------------------------
+2026-01-02 * "Propriete Paris XII" "Loyer et charges"
+  Assets:Banque:CompteCourant     -1120.50 EUR
+  Expenses:Logement:Loyer-Credit   1050.00 EUR
+  Expenses:Logement:Charges-Copro    70.50 EUR
+
+2026-01-02 * "Orange" "Accès internet janvier"
+  Assets:Banque:CompteCourant      -31.99 EUR
+  Expenses:Logement:Internet        31.99 EUR
+
+2026-01-02 * "SFR" "Forfaits mobiles janvier"
+  Assets:Banque:CompteCourant      -25.98 EUR
+  Expenses:Logement:Mobiles         12.99 EUR
+  Expenses:Logement:Mobiles         12.99 EUR
+
+2026-01-03 * "GDF" "Gaz janvier"
+  Assets:Banque:CompteCourant      -68.40 EUR
+  Expenses:Logement:Gaz             68.40 EUR
+
+2026-01-03 * "EDF" "Électricité janvier"
+  Assets:Banque:CompteCourant      -89.90 EUR
+  Expenses:Logement:Electricite     89.90 EUR
+
+2026-01-03 * "Régie de l'eau" "Eau janvier"
+  Assets:Banque:CompteCourant      -22.40 EUR
+  Expenses:Logement:Eau             22.40 EUR
+
+2026-01-05 * "Mutuelle" "Cotisation janvier"
+  Assets:Banque:CompteCourant     -156.20 EUR
+  Expenses:Sante:Mutuelle          156.20 EUR
+
+2026-01-06 * "Club Culture Loisirs" "Abonnement sport janvier"
+  Assets:Banque:CompteCourant      -29.90 EUR
+  Expenses:Loisirs:Sport            29.90 EUR
+
+2026-01-08 * "Netflix" "Abonnement janvier"
+  Assets:Banque:CompteCourant      -13.49 EUR
+  Expenses:Loisirs:Abonnements      13.49 EUR
+
+2026-01-10 * "Deezer" "Abonnement janvier"
+  Assets:Banque:CompteCourant       -7.99 EUR
+  Expenses:Loisirs:Abonnements       7.99 EUR
+
+2026-01-13 * "DGFiP" "Prélèvement à la source janvier"
+  Assets:Banque:CompteCourant     -420.00 EUR
+  Expenses:Impots:Impot-Revenu     420.00 EUR
+
+# ---- Revenus ----------------------------------------------------------------
+2026-01-04 * "CAF" "Allocations familiales janvier"
+  Assets:Banque:CompteCourant      155.00 EUR
+  Income:Allocations-Familiales   -155.00 EUR
+
+2026-01-26 * "Employeur Conjoint-1" "Salaire janvier"
+  Assets:Banque:CompteCourant     2350.00 EUR
+  Income:Salaires:Conjoint-1     -2350.00 EUR
+
+2026-01-27 * "Employeur Conjoint-2" "Salaire janvier"
+  Assets:Banque:CompteCourant     1890.00 EUR
+  Income:Salaires:Conjoint-2     -1890.00 EUR
+
+2026-01-18 * "Mutuelle" "Remboursement soins 2025"
+  Assets:Banque:CompteCourant       45.20 EUR
+  Income:Remboursements-Sante      -45.20 EUR
+
+# ---- Alimentation -----------------------------------------------------------
+2026-01-03 * "Carrefour" "Courses janvier"
+  Assets:Banque:CompteCourant      -82.35 EUR
+  Expenses:Alimentation:Courses     82.35 EUR
+
+2026-01-10 * "Carrefour" "Courses janvier"
+  Assets:Banque:CompteCourant     -156.80 EUR
+  Expenses:Alimentation:Courses    156.80 EUR
+
+2026-01-17 * "Leclerc" "Courses janvier"
+  Assets:Banque:CompteCourant      -45.20 EUR
+  Expenses:Alimentation:Courses     45.20 EUR
+
+2026-01-24 * "Pizzeria Maria" "Sortie dîner" #sorties
+  Assets:Banque:CompteCourant      -58.40 EUR
+  Expenses:Alimentation:Restaurants 58.40 EUR
+
+# ---- Transport --------------------------------------------------------------
+2026-01-14 * "TotalEnergies" "Plein janvier"
+  Assets:Banque:CompteCourant      -65.85 EUR
+  Expenses:Transport:Carburant      65.85 EUR
+
+2026-01-19 * "Vinci Autoroutes" "Peage Lyon"
+  Assets:Banque:CompteCourant      -12.50 EUR
+  Expenses:Transport:Parking-Peages 12.50 EUR
+
+# ---- Enfants ----------------------------------------------------------------
+2026-01-06 * "Collège Molière" "Cantine janvier"
+  Assets:Banque:CompteCourant      -34.50 EUR
+  Expenses:Enfants:Cantine-Scolaire 34.50 EUR
+
+2026-01-06 * "Collège Molière" "Périscolaire janvier"
+  Assets:Banque:CompteCourant      -28.00 EUR
+  Expenses:Enfants:Periscolaire     28.00 EUR
+
+2026-01-21 * "Fnac" "Cadeau anniversaire Lily"
+  Assets:Banque:CompteCourant      -35.00 EUR
+  Expenses:Cadeaux                  35.00 EUR
+
+2026-01-24 * "Cinéma Les Étoiles" "Séance famille"
+  Assets:Banque:CompteCourant      -22.00 EUR
+  Expenses:Loisirs:Sorties          22.00 EUR
+
+2026-01-31 * "Banque" "Frais de tenue de compte"
+  Assets:Banque:CompteCourant       -4.90 EUR
+  Expenses:Frais-Bancaires           4.90 EUR
+
+# ---- Épargne (transferts actifs) --------------------------------------------
+2026-01-27 * "Virement épargne" "Objectifs mensuels"
+  Assets:Banque:CompteCourant     -300.00 EUR
+  Assets:Epargne:LivretA           200.00 EUR
+  Assets:Epargne:LDD               100.00 EUR
+
+# ---- Contrôle ---------------------------------------------------------------
+# (assertions vérifiées à 00:00 de la date — sémantique v3 ; dernière transaction
+# du mois au 31, donc contrôle le 1er du mois suivant)
+2026-02-01 balance Assets:Banque:CompteCourant 4453.18 EUR
+2026-02-01 balance Assets:Epargne:LivretA     19202.49 EUR
+2026-02-01 balance Assets:Epargne:LDD         10266.99 EUR

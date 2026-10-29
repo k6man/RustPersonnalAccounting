@@ -1,0 +1,11 @@
+# Fins de ligne explicites : les diffs git doivent rester stables,
+# et beancount (comme rust) ne dépend d'aucun CRLF parasite.
+* text=auto eol=lf
+*.rs          text eol=lf
+*.toml        text eol=lf
+*.md          text eol=lf
+*.yml         text eol=lf
+*.yaml        text eol=lf
+*.beancount   text eol=lf
+justfile      text eol=lf
+LICENSE       text eol=lf

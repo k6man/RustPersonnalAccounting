@@ -1,0 +1,3 @@
+# Devises du foyer. Avec `operating_currency "EUR"` dans main.beancount,
+# les soldes en EUR s'affichent avec colonnes dédiées.
+2020-01-01 commodity EUR

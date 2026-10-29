@@ -1,0 +1,9 @@
+/target
+Cargo.lock.bak
+.DS_Store
+# Cache binaire rledger (pivot de parseurs)
+*.cache
+# Sorties temporaires de la GUI (écritures atomiques : temporaire + rename)
+*.tmp
+*.swp
+\#*\#

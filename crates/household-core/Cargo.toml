@@ -1,0 +1,20 @@
+[package]
+name = "household-core"
+description = "Couche accès/index au ledger beancount : chargement (rustledger), snapshot immuable, écriture transactionnelle"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+rustledger-core.workspace = true
+rustledger-parser.workspace = true
+rustledger-loader.workspace = true
+rustledger-booking.workspace = true
+rustledger-validate.workspace = true
+rust_decimal.workspace = true
+jiff.workspace = true
+thiserror.workspace = true
+
+[lints]
+workspace = true

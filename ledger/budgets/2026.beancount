@@ -1,0 +1,81 @@
+# Budget 2026 — SEULE SOURCE DE VÉRITÉ budgétaire du foyer.
+#
+# Format (convention Fava, supportée nativement par rustledger-budget) :
+#
+#   AAAA-MM-JJ custom "budget" <compte> "monthly" <montant> EUR
+#
+# - Une directive s'applique À PARTIR de sa date (supersession) : pour varier
+#   mensuellement, une directive par mois, `0.00 EUR` pour remettre à zéro.
+# - Postes épargne : budgétés sur le COMPTE ACTIF DÉSIGNÉ  (Assets:Epargne:*).
+#   NOTE : les intérêts annuels (Income:Interets:*) augmentent aussi ces comptes
+#   et gonflent le « réel » des objectifs — écart annuel mineur, documenté.
+# - Une directive = une ligne, mise à jour chirurgicale par la GUI/CLI.
+# Ce fichier est éditable à la main : les commentaires sont préservés par
+# l'éditeur, l'ordre (date, compte) est normalisé.
+
+# ---- Postes fixes mensuels --------------------------------------------------
+2026-01-01 custom "budget" Assets:Epargne:LDD                  "monthly"  100.00 EUR
+2026-01-01 custom "budget" Assets:Epargne:LivretA              "monthly"  200.00 EUR
+2026-01-01 custom "budget" Expenses:Alimentation:Restaurants   "monthly"  120.00 EUR
+2026-01-01 custom "budget" Expenses:Alimentation:Courses       "monthly"  850.00 EUR
+2026-01-01 custom "budget" Expenses:Assurances                 "monthly"   25.00 EUR
+2026-01-01 custom "budget" Expenses:Divers                     "monthly"   50.00 EUR
+2026-01-01 custom "budget" Expenses:Frais-Bancaires            "monthly"    4.90 EUR
+2026-01-01 custom "budget" Expenses:Habillement                "monthly"   75.00 EUR
+2026-01-01 custom "budget" Expenses:Impots:Impot-Revenu        "monthly"  420.00 EUR
+2026-01-01 custom "budget" Expenses:Logement:Assurance-Habitation "monthly" 15.00 EUR
+2026-01-01 custom "budget" Expenses:Logement:Charges-Copro     "monthly"   70.50 EUR
+2026-01-01 custom "budget" Expenses:Logement:Electricite       "monthly"   89.90 EUR
+2026-01-01 custom "budget" Expenses:Logement:Entretien-Travaux "monthly"   40.00 EUR
+2026-01-01 custom "budget" Expenses:Logement:Eau               "monthly"   22.40 EUR
+2026-01-01 custom "budget" Expenses:Logement:Gaz               "monthly"   68.40 EUR
+2026-01-01 custom "budget" Expenses:Logement:Internet          "monthly"   31.99 EUR
+2026-01-01 custom "budget" Expenses:Logement:Loyer-Credit      "monthly" 1050.00 EUR
+2026-01-01 custom "budget" Expenses:Logement:Mobiles           "monthly"   25.98 EUR
+2026-01-01 custom "budget" Expenses:Logement:Taxe-Fonciere     "monthly"    0.00 EUR
+2026-01-01 custom "budget" Expenses:Loisirs:Abonnements        "monthly"   45.00 EUR
+2026-01-01 custom "budget" Expenses:Loisirs:Sorties            "monthly"   50.00 EUR
+2026-01-01 custom "budget" Expenses:Loisirs:Sport              "monthly"   30.00 EUR
+2026-01-01 custom "budget" Expenses:Enfants:Activites-Sport-Culture "monthly" 60.00 EUR
+2026-01-01 custom "budget" Expenses:Enfants:Argent-De-Poche    "monthly"   30.00 EUR
+2026-01-01 custom "budget" Expenses:Enfants:Cantine-Scolaire   "monthly"   70.00 EUR
+2026-01-01 custom "budget" Expenses:Enfants:Fournitures-Scolaires "monthly"  0.00 EUR
+2026-01-01 custom "budget" Expenses:Enfants:Periscolaire       "monthly"   40.00 EUR
+2026-01-01 custom "budget" Expenses:Enfants:Sante-Enfants      "monthly"   15.00 EUR
+2026-01-01 custom "budget" Expenses:Enfants:Vetements          "monthly"   35.00 EUR
+2026-01-01 custom "budget" Expenses:Sante:Dentiste-Optique     "monthly"   40.00 EUR
+2026-01-01 custom "budget" Expenses:Sante:Medecin              "monthly"   25.00 EUR
+2026-01-01 custom "budget" Expenses:Sante:Mutuelle             "monthly"  156.20 EUR
+2026-01-01 custom "budget" Expenses:Sante:Pharmacie            "monthly"   30.00 EUR
+2026-01-01 custom "budget" Expenses:Transport:Assurance-Auto   "monthly"   89.00 EUR
+2026-01-01 custom "budget" Expenses:Transport:Carburant        "monthly"  130.00 EUR
+2026-01-01 custom "budget" Expenses:Transport:Entretien-Auto   "monthly"   45.00 EUR
+2026-01-01 custom "budget" Expenses:Transport:Parking-Peages   "monthly"   15.00 EUR
+2026-01-01 custom "budget" Expenses:Transport:Taxe-Auto        "monthly"    0.00 EUR
+2026-01-01 custom "budget" Expenses:Vacances                   "monthly"    0.00 EUR
+
+# ---- Supersessions datées (à partir du) -------------------------------------
+# Courses : +6 % à partir de juillet.
+2026-07-01 custom "budget" Expenses:Alimentation:Courses       "monthly"  900.00 EUR
+# Taxe auto (vignette) payée en mars.
+2026-03-01 custom "budget" Expenses:Transport:Taxe-Auto        "monthly"  230.00 EUR
+2026-04-01 custom "budget" Expenses:Transport:Taxe-Auto        "monthly"    0.00 EUR
+# Taxe foncière réglée en octobre.
+2026-10-01 custom "budget" Expenses:Logement:Taxe-Fonciere     "monthly" 1150.00 EUR
+2026-11-01 custom "budget" Expenses:Logement:Taxe-Fonciere     "monthly"    0.00 EUR
+# Fournitures scolaires : rentrée de septembre.
+2026-09-01 custom "budget" Expenses:Enfants:Fournitures-Scolaires "monthly" 180.00 EUR
+2026-10-01 custom "budget" Expenses:Enfants:Fournitures-Scolaires "monthly"   0.00 EUR
+
+# ---- Vacances : budget mensuel variable ------------------------------------
+2026-02-01 custom "budget" Expenses:Vacances                   "monthly"    0.00 EUR
+2026-03-01 custom "budget" Expenses:Vacances                   "monthly"  640.00 EUR
+2026-04-01 custom "budget" Expenses:Vacances                   "monthly"    0.00 EUR
+2026-05-01 custom "budget" Expenses:Vacances                   "monthly"  450.00 EUR
+2026-06-01 custom "budget" Expenses:Vacances                   "monthly"    0.00 EUR
+2026-07-01 custom "budget" Expenses:Vacances                   "monthly" 1500.00 EUR
+2026-08-01 custom "budget" Expenses:Vacances                   "monthly"  900.00 EUR
+2026-09-01 custom "budget" Expenses:Vacances                   "monthly"    0.00 EUR
+2026-10-01 custom "budget" Expenses:Vacances                   "monthly"    0.00 EUR
+2026-11-01 custom "budget" Expenses:Vacances                   "monthly"    0.00 EUR
+2026-12-01 custom "budget" Expenses:Vacances                   "monthly"  120.00 EUR

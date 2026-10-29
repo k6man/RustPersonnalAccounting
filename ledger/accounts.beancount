@@ -1,0 +1,93 @@
+# Plan de comptes du foyer — noms français, sans accents (limites Beancount).
+# Ouvertures communes : 2024-01-01 (antées à toute transaction).
+# Les virements vers l'épargne sont des transferts actifs, pas des dépenses.
+
+# ---- Actifs -----------------------------------------------------------------
+2024-01-01 open Assets:Banque:CompteCourant
+
+# Plafonds réglementaires en métadonnées : lues par la GUI pour les jauges
+# d'alerte (approche/dépassement). Convention `ceiling:` documentée dans TODO.md.
+2024-01-01 open Assets:Epargne:LivretA
+  ceiling: 22950.00 EUR
+2024-01-01 open Assets:Epargne:LDD
+  ceiling: 12000.00 EUR
+
+# ---- Équité -----------------------------------------------------------------
+2024-01-01 open Equity:Soldes-Ouverture
+
+# ---- Revenus ----------------------------------------------------------------
+2024-01-01 open Income:Salaires:Conjoint-1
+2024-01-01 open Income:Salaires:Conjoint-2
+2024-01-01 open Income:Allocations-Familiales
+# Intérêts Livret A / LDD : exonérés d'impôt sur le revenu (comptabilité de
+# trésorerie : ils sont malgré tout enregistrés comme revenus, non réinvestis
+# pour l'instant ; l'objet d'un suivi net/(brut) éventuel restera une amélioration).
+2024-01-01 open Income:Interets:Livret-A
+2024-01-01 open Income:Interets:LDD
+2024-01-01 open Income:Remboursements-Sante
+2024-01-01 open Income:Autres
+
+# ---- Dépenses ---------------------------------------------------------------
+
+# Logement
+2024-01-01 open Expenses:Logement:Loyer-Credit
+2024-01-01 open Expenses:Logement:Charges-Copro
+2024-01-01 open Expenses:Logement:Assurance-Habitation
+2024-01-01 open Expenses:Logement:Taxe-Fonciere
+2024-01-01 open Expenses:Logement:Electricite
+2024-01-01 open Expenses:Logement:Gaz
+2024-01-01 open Expenses:Logement:Eau
+2024-01-01 open Expenses:Logement:Internet
+2024-01-01 open Expenses:Logement:Mobiles
+2024-01-01 open Expenses:Logement:Entretien-Travaux
+
+# Alimentation
+2024-01-01 open Expenses:Alimentation:Courses
+2024-01-01 open Expenses:Alimentation:Restaurants
+2024-01-01 open Expenses:Alimentation:Cantine
+
+# Transport
+2024-01-01 open Expenses:Transport:Carburant
+2024-01-01 open Expenses:Transport:Assurance-Auto
+2024-01-01 open Expenses:Transport:Entretien-Auto
+2024-01-01 open Expenses:Transport:Transports-En-Commun
+2024-01-01 open Expenses:Transport:Parking-Peages
+2024-01-01 open Expenses:Transport:Taxe-Auto
+
+# Enfants
+2024-01-01 open Expenses:Enfants:Creche-Garde
+2024-01-01 open Expenses:Enfants:Periscolaire
+2024-01-01 open Expenses:Enfants:Cantine-Scolaire
+2024-01-01 open Expenses:Enfants:Vetements
+2024-01-01 open Expenses:Enfants:Activites-Sport-Culture
+2024-01-01 open Expenses:Enfants:Fournitures-Scolaires
+2024-01-01 open Expenses:Enfants:Argent-De-Poche
+2024-01-01 open Expenses:Enfants:Sante-Enfants
+
+# Santé
+2024-01-01 open Expenses:Sante:Mutuelle
+2024-01-01 open Expenses:Sante:Medecin
+2024-01-01 open Expenses:Sante:Pharmacie
+2024-01-01 open Expenses:Sante:Dentiste-Optique
+
+# Loisirs
+2024-01-01 open Expenses:Loisirs:Sorties
+2024-01-01 open Expenses:Loisirs:Abonnements
+2024-01-01 open Expenses:Loisirs:Sport
+2024-01-01 open Expenses:Loisirs:Culture
+
+# Vacances
+2024-01-01 open Expenses:Vacances
+
+# Impôts (prélèvement à la source via Impot-Revenu)
+2024-01-01 open Expenses:Impots:Impot-Revenu
+2024-01-01 open Expenses:Impots:Autres
+
+# Divers
+2024-01-01 open Expenses:Assurances
+2024-01-01 open Expenses:Frais-Bancaires
+2024-01-01 open Expenses:Cadeaux
+2024-01-01 open Expenses:Habillement
+2024-01-01 open Expenses:Soins-Personnels
+2024-01-01 open Expenses:Animaux
+2024-01-01 open Expenses:Divers

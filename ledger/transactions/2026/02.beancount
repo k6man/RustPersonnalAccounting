@@ -1,0 +1,114 @@
+# Février 2026.
+
+# ---- Prélèvements automatiques ---------------------------------------------
+2026-02-02 * "Propriete Paris XII" "Loyer et charges"
+  Assets:Banque:CompteCourant     -1120.50 EUR
+  Expenses:Logement:Loyer-Credit   1050.00 EUR
+  Expenses:Logement:Charges-Copro    70.50 EUR
+
+2026-02-02 * "Orange" "Accès internet février"
+  Assets:Banque:CompteCourant      -31.99 EUR
+  Expenses:Logement:Internet        31.99 EUR
+
+2026-02-02 * "SFR" "Forfaits mobiles février"
+  Assets:Banque:CompteCourant      -25.98 EUR
+  Expenses:Logement:Mobiles         12.99 EUR
+  Expenses:Logement:Mobiles         12.99 EUR
+
+2026-02-03 * "GDF" "Gaz février"
+  Assets:Banque:CompteCourant      -68.40 EUR
+  Expenses:Logement:Gaz             68.40 EUR
+
+2026-02-03 * "EDF" "Électricité février"
+  Assets:Banque:CompteCourant      -89.90 EUR
+  Expenses:Logement:Electricite     89.90 EUR
+
+2026-02-03 * "Régie de l'eau" "Eau février"
+  Assets:Banque:CompteCourant      -22.40 EUR
+  Expenses:Logement:Eau             22.40 EUR
+
+2026-02-05 * "Mutuelle" "Cotisation février"
+  Assets:Banque:CompteCourant     -156.20 EUR
+  Expenses:Sante:Mutuelle          156.20 EUR
+
+2026-02-06 * "Club Culture Loisirs" "Abonnement sport février"
+  Assets:Banque:CompteCourant      -29.90 EUR
+  Expenses:Loisirs:Sport            29.90 EUR
+
+2026-02-08 * "Netflix" "Abonnement février"
+  Assets:Banque:CompteCourant      -13.49 EUR
+  Expenses:Loisirs:Abonnements      13.49 EUR
+
+2026-02-10 * "Deezer" "Abonnement février"
+  Assets:Banque:CompteCourant       -7.99 EUR
+  Expenses:Loisirs:Abonnements       7.99 EUR
+
+2026-02-13 * "DGFiP" "Prélèvement à la source février"
+  Assets:Banque:CompteCourant     -420.00 EUR
+  Expenses:Impots:Impot-Revenu     420.00 EUR
+
+# ---- Revenus ----------------------------------------------------------------
+2026-02-04 * "CAF" "Allocations familiales février"
+  Assets:Banque:CompteCourant      155.00 EUR
+  Income:Allocations-Familiales   -155.00 EUR
+
+2026-02-26 * "Employeur Conjoint-1" "Salaire février"
+  Assets:Banque:CompteCourant     2350.00 EUR
+  Income:Salaires:Conjoint-1     -2350.00 EUR
+
+2026-02-27 * "Employeur Conjoint-2" "Salaire février"
+  Assets:Banque:CompteCourant     1890.00 EUR
+  Income:Salaires:Conjoint-2     -1890.00 EUR
+
+2026-02-15 * "Mutuelle" "Remboursement consultations janvier"
+  Assets:Banque:CompteCourant       26.85 EUR
+  Income:Remboursements-Sante      -26.85 EUR
+
+# ---- Alimentation / sorties -------------------------------------------------
+2026-02-03 * "Carrefour" "Courses février"
+  Assets:Banque:CompteCourant      -91.20 EUR
+  Expenses:Alimentation:Courses     91.20 EUR
+
+2026-02-10 * "Leclerc" "Courses février"
+  Assets:Banque:CompteCourant     -147.65 EUR
+  Expenses:Alimentation:Courses    147.65 EUR
+
+2026-02-14 * "La Pergola" "Dîner fête des amants" #cadeaux-saintvalentin
+  Assets:Banque:CompteCourant      -41.70 EUR
+  Expenses:Alimentation:Restaurants 41.70 EUR
+
+2026-02-21 * "Cinéma Les Étoiles" "Séance famille"
+  Assets:Banque:CompteCourant      -33.80 EUR
+  Expenses:Loisirs:Sorties          33.80 EUR
+
+# ---- Transport / enfants ----------------------------------------------------
+2026-02-05 * "TotalEnergies" "Plein février"
+  Assets:Banque:CompteCourant      -62.10 EUR
+  Expenses:Transport:Carburant      62.10 EUR
+
+2026-02-05 * "Collège Molière" "Cantine février"
+  Assets:Banque:CompteCourant      -34.50 EUR
+  Expenses:Enfants:Cantine-Scolaire 34.50 EUR
+
+2026-02-05 * "Collège Molière" "Périscolaire février"
+  Assets:Banque:CompteCourant      -28.00 EUR
+  Expenses:Enfants:Periscolaire     28.00 EUR
+
+2026-02-14 * "Fnac" "Cadeau Saint-Valentin"
+  Assets:Banque:CompteCourant      -19.90 EUR
+  Expenses:Cadeaux                  19.90 EUR
+
+2026-02-28 * "Banque" "Frais de tenue de compte"
+  Assets:Banque:CompteCourant       -4.90 EUR
+  Expenses:Frais-Bancaires           4.90 EUR
+
+# ---- Épargne ----------------------------------------------------------------
+2026-02-27 * "Virement épargne" "Objectifs mensuels"
+  Assets:Banque:CompteCourant     -300.00 EUR
+  Assets:Epargne:LivretA           200.00 EUR
+  Assets:Epargne:LDD               100.00 EUR
+
+# ---- Contrôle ---------------------------------------------------------------
+2026-03-01 balance Assets:Banque:CompteCourant 6124.53 EUR
+2026-03-01 balance Assets:Epargne:LivretA     19402.49 EUR
+2026-03-01 balance Assets:Epargne:LDD         10366.99 EUR

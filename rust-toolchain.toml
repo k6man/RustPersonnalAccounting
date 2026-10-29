@@ -1,0 +1,5 @@
+# Toolchain commune à tout le workspace.
+# « stable » suffit : les crates personnalisées sont compilées avec une
+# version >= MSRV de rustledger 0.24 (le dépôt d'origine est épinglé 1.98.1).
+[toolchain]
+channel = "stable"

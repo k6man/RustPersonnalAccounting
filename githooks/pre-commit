@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# Hook pre-commit : refuse tout commit qui invalide le ledger.
+# Valide seulement quand des fichiers .beancount sont dans la zone d'index.
+set -euo pipefail
+
+cd "$(git rev-parse --show-toplevel)"
+
+if ! git diff --cached --name-only --diff-filter=ACMR | grep -q '\.beancount$'; then
+  exit 0
+fi
+
+echo "pre-commit: validation du ledger…"
+
+if command -v rledger >/dev/null 2>&1; then
+  rledger check ledger/main.beancount
+elif [ -f Cargo.toml ]; then
+  # Repli : la CLI maison (disponible à partir du jalon 2).
+  cargo run -q -p household-cli -- check ledger/main.beancount
+else
+  echo "ERREUR: ni 'rledger' ni le workspace Cargo pour valider le ledger." >&2
+  echo "Installez rustledger : brew install rustledger" >&2
+  exit 1
+fi

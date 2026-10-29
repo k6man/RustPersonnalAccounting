@@ -1,0 +1,19 @@
+[package]
+name = "household-gui"
+description = "Application de comptabilité du foyer (eframe/egui)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "compta-foyer"
+path = "src/main.rs"
+
+[dependencies]
+eframe.workspace = true
+egui.workspace = true
+household-core = { path = "../household-core" }
+
+[lints]
+workspace = true

@@ -1,0 +1,17 @@
+[package]
+name = "household-budget"
+description = "Logique budgétaire pure : grille postes × 12 mois, rollover, duplication d'année (au-dessus de rustledger-budget)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+rustledger-core.workspace = true
+rustledger-budget.workspace = true
+rust_decimal.workspace = true
+jiff.workspace = true
+thiserror.workspace = true
+
+[lints]
+workspace = true
