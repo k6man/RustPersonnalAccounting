@@ -14,8 +14,8 @@ echo "pre-commit: validation du ledger…"
 if command -v rledger >/dev/null 2>&1; then
   rledger check ledger/main.beancount
 elif [ -f Cargo.toml ]; then
-  # Repli : la CLI maison (disponible à partir du jalon 2).
-  cargo run -q -p household-cli -- check ledger/main.beancount
+  # Repli : la CLI maison (crate household-core, depuis le jalon 2).
+  cargo run -q -p household-core --bin household-cli -- check ledger/main.beancount
 else
   echo "ERREUR: ni 'rledger' ni le workspace Cargo pour valider le ledger." >&2
   echo "Installez rustledger : brew install rustledger" >&2

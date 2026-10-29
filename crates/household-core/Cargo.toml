@@ -16,5 +16,9 @@ rust_decimal.workspace = true
 jiff.workspace = true
 thiserror.workspace = true
 
+[dev-dependencies]
+rust_decimal_macros.workspace = true
+rustledger-core.workspace = true
+
 [lints]
 workspace = true

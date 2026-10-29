@@ -1664,6 +1664,7 @@ version = "0.1.0"
 dependencies = [
  "jiff",
  "rust_decimal",
+ "rust_decimal_macros",
  "rustledger-booking",
  "rustledger-core",
  "rustledger-loader",

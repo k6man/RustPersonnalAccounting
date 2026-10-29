@@ -11,23 +11,15 @@
 > - Mise à jour **à chaque jalon et à chaque tâche significative**, dans le **même commit** que le code concerné.
 > - Les tâches découvertes en cours de route sont ajoutées immédiatement, pas perdues.
 
-**État du projet** : jalon 1 terminé et commité (`30cc0ab`). Ledger d'exemple validé
-(`rledger check` ✓), workspace compilé, fmt/clippy/tests verts.
-**Prochaine action : jalon 2** (`household-core`).
+**État du projet** : jalons 1 et 2 terminés (`30cc0ab`, jalon 2 ci‑dessous). Ledger d'exemple
+validé (`rledger check` ✓), formats/clippy/tests verts (9 tests household-core).
+**Prochaine action : jalon 3** (`household-budget`).
 
 ---
 
 ## En cours
 
-- [ ] **Jalon 2 — household-core : lecture et écriture du ledger**
-  - Contexte de reprise : lire d'abord « Reconnaissance » (API rustledger 0.24 vérifiées).
-    Clé de voûte : `rustledger_loader::load(path, &LoadOptions) -> Ledger` (directives
-    `Spanned<Directive>` + `SourceMap` pour localiser fichier/ligne, `balance_view()` +
-    `Inventory` pour les soldes). Écriture : append canonique via `rustledger_core::format`
-    dans `transactions/AAAA/MM.beancount` (globs inclus de main — jamais éditer main),
-    replace/remove par span exact, temp+rename. Binaire `household-cli` (sous-commandes
-    `check`, `balances`) appelé en repli par `githooks/pre-commit` + `just check-ledger`.
-    Types : `rustledger_core::NaiveDate` (jiff 0.2), `rust_decimal::Decimal`.
+_Néant — voir « À faire » (jalon 3)._
 
 ## À faire
 
@@ -66,24 +58,54 @@
 
 ### Jalon 2 — household-core : lecture et écriture du ledger
 
-- [ ] `household-core` : wrapper du chargement — `LedgerSnapshot` immuable (`Arc`) construit sur
-  `rustledger_loader::load(path, &LoadOptions)` ; exposer : directives sourcées (`Spanned<Directive>`
-  + `SourceMap` → fichier/ligne), balances par compte (`balance_view()` + `Inventory`), options,
-  `Ledger.errors` typés (`thiserror`), arbre des comptes, plafonds lus dans les métadonnées `open`.
-- [ ] Types domaine : `Date = rustledger_core::NaiveDate` (jiff), `Decimal = rust_decimal` — ré-exports,
-  pas de chrono, pas de conversions aux frontières.
-- [ ] API requêtes minimales pour la GUI : soldes au jour J, écritures par période, filtres (compte,
-  substring, tag), comptes ouverts à une date (autocomplétion), payees fréquents.
-- [ ] **Writer transactions** : génération de bloc canonique via `rustledger_core::format` ; append
-  trié par date (`canonical_sort_key`) dans `transactions/AAAA/MM.beancount` (créé si absent + include
-  dans `main.beancount` — réfléchir au glob d'include pour éviter l'édition de main) ; édition =
-  remplacement de l'exact span source ; suppression = coupe du bloc + revalidation ; écriture atomique
-  (temp + `rename`), verrou d'écriture.
-- [ ] `household-cli` (bin) : sous-commandes `check` (exit code + erreurs typées), `balances` — sert
-  au hook pre-commit et à la CI sans dépendance au binaire rledger.
-- [ ] Tests d'intégration **golden files** : snapshot du ledger d'exemple (balances attendues) ;
-  écriture d'une transaction dans un ledger temporaire → relecture → contenu exact attendu.
-- [ ] Commit jalon 2.
+- [x] `household-core` : wrapper du chargement — `Snapshot` immuable construit sur
+  `rustledger_loader::load(path, &LoadOptions)` ; exposé : directives sourcées (`Spanned<Directive>`
+  + `SourceMap` → fichier/ligne via `source_of`, spans exacts via `span_of`), balances par compte/
+  devise (rejeu `BookingEngine` sur `balance_view()`, soldes au `Through::{StartOfDay,EndOfDay}`),
+  erreurs `LedgerError` typées (`is_valid`/`errors`), comptes ouverts + payees indexés,
+  plafonds lus dans les métadonnées `open` (`ceiling:`, `MetaValue::Amount|Number`).
+- [x] Types domaine : `NaiveDate = rustledger_core::NaiveDate` (jiff), `Decimal = rust_decimal` —
+  ré-exports, pas de chrono, pas de conversions aux frontières.
+- [x] API requêtes pour la GUI (partie requêtes du jalon) : `balances_at/EndOfDay/balance_of/
+  balances_at_end`, `last_transaction_date`, `transactions()` (index), `transaction(index)`,
+  `payees()` (tri fréquence puis alpha), `accounts()`/`ceilings()` — les filtres riches
+  (substring/tag) seront posés avec l'écran Journal (jalon 4/5, selon besoin réel).
+- [x] **Writer transactions** (`src/writer.rs`) : bloc canonique via `rustledger_core::format`
+  (`FormatConfig::default()`) ; append trié par date (`find_insertion_byte` sur lignes ISO
+  reconnues) dans `transactions/AAAA/MM.beancount` (créé si absent, en‑tête documentaire) ;
+  replace sur place par span exact (même date) sinon remove+append ; suppression = coupe du
+  bloc + pli des lignes vides ; écriture atomique (temp + `rename`, `sync_all`) ; verrou
+  `.write.lock` (create_new, anti‑stale 120 s) ; ⚠️ **garantie pro** : toute mutation est
+  d'abord jouée sur une **copie scratch du ledger** (`precheck_with`) et refusée si le chargement
+  n'est pas sans erreur, puis le ledger réel est revalidé après écriture.
+- [x] `household-cli` (bin du crate household-core) : `check` (exit 0/1/2, erreurs
+  fichier:ligne) et `balances` (`--date=AAAA-MM-JJ`, format colonne scriptable) — branché en
+  repli dans `githooks/pre-commit` et `just check-ledger` (`cargo run -p household-core --bin
+  household-cli`). NB le repli reste vérifié à la main (rledger présent localement).
+- [x] Tests d'intégration : `tests/golden.rs` (lecture du ledger réel : validité, soldes de
+  contrôle 2026‑04‑01, plafonds 22 950/12 000, dernier jour, payees) et `tests/writer.rs`
+  (copie scratch : append→replace→remove bout en bout avec soldes attendus, ordre
+  chronologique inter‑insertions, refus d'une transaction déséquilibrée **fichier intact**,
+  refus d'une écriture qui casserait une assertion `balance`). 9 tests au vert.
+- [x] Commit jalon 2.
+
+**Écarts d'API 0.24.0 publiée vs dépôt `main` découverts au jalon 2** (source de vérité :
+crates ~/.cargo/registry/…-0.24.0 ; à revoir si épinglage un jour déplacé) :
+- `BookingEngine` **n'a pas** `for_ledger` ni `into_presented_inventories` ; utiliser
+  `with_method` + `register_account_methods(view.iter())` + `apply(txn)` + `into_inventories()`;
+  la présentation/arrondi est une préoccupation d'affichage (0.24 ne l'expose pas).
+- `Ledger.options.booking_method` est la **chaîne d'option** beancount ("STRICT"…) →
+  `BookingMethod::from_str` (via `std::str::FromStr`), repli Strict.
+- `MetaMap` (struct interne du main) n'est pas re‑exporté : `open.meta: Metadata`
+  = `FxHashMap<String, MetaValue>` ; lecture via `meta.get("ceiling")`.
+- `Spanned` se prend dans `rustledger_core` (re-export, même type que celui du loader, dont le
+  re-export est privé).
+- `ErrorLocation { file, line, column }` (`column`, pas `col`) ; `LedgerError` **n'a pas** le
+  champ `hint` en 0.24.0 ; `errors: Vec<LedgerError>`.
+- Chemins de la `SourceMap` : tels qu'inclus (relatifs possibles) **ou canoniques**
+  (macOS : `/var` → stocké `/private/var`) — `Snapshot::resolve_source` + canonisation
+  (`canonize`) du cible/parent dans le writer, sinon `strip_prefix` échoue.
+- `rust_decimal_macros` : pas de 1.43 publiée → **1.40** épinglée (dev‑dep).
 
 ### Jalon 3 — household-budget : logique budgétaire pure
 
@@ -171,6 +193,11 @@
 - [x] **Jalon 1 — squelette workspace + ledger d'exemple+ outillage (2026‑10‑29, `30cc0ab`)** :
   `rledger check` ✓, `just fmt-check/clippy -D warnings/test` ✓ (workspace complet, eframe 0.37
   compilé), 26 fichiers, licence GPL‑3.0, CI, hook pre-commit.
+- [x] **Jalon 2 — household-core : lecture et écriture du ledger (2026‑10‑29)** : `Snapshot`
+  (chargement complet + requêtes) + writer transactionnel (append/replace/remove canoniques,
+  scratch + pré-vérification + atomicité + verrou) + binaire `household-cli` branché hook/justfile ;
+  9 tests (golden 4 + writer 4 + unitaire 1) verts, clippy `-D warnings` vert, ledger revalidé
+  par `rledger check`. Détails et écarts d'API 0.24.0 dans la checklist archivée du jalon (ci‑dessus).
 
 ### Reconnaissance — capacités vérifiées de rustledger 0.24.0 (publié 2026‑09‑06)
 

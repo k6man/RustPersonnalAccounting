@@ -26,8 +26,8 @@ test:
 check-ledger:
     @if command -v rledger >/dev/null; then rledger check ledger/main.beancount; \
     else \
-      echo "rledger absent — repli household-cli (J2+)"; \
-      cargo run -q -p household-cli -- check ledger/main.beancount; \
+      echo "rledger absent — repli household-cli (binaire du crate household-core)"; \
+      cargo run -q -p household-core --bin household-cli -- check ledger/main.beancount; \
     fi
 
 check: fmt-check clippy test check-ledger

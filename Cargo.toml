@@ -31,6 +31,7 @@ rustledger-budget = "=0.24.0"
 
 # Types de domaine — réutilisés tels quels (aucune conversion aux frontières).
 rust_decimal = "1.43"
+rust_decimal_macros = "1.40"
 jiff = "0.2"
 
 # Outils transverses.
