@@ -11,50 +11,58 @@
 > - Mise à jour **à chaque jalon et à chaque tâche significative**, dans le **même commit** que le code concerné.
 > - Les tâches découvertes en cours de route sont ajoutées immédiatement, pas perdues.
 
-**État du projet** : étape 0 (reconnaissance) terminée. Plan validé par le maître d'ouvrage
-(licence GPL‑3.0 acceptée ; budget d'épargne sur les comptes `Assets` destinataires accepté).
-Aucun code écrit pour l'instant. **Prochaine action : jalon 1.**
+**État du projet** : jalon 1 terminé et commité (`30cc0ab`). Ledger d'exemple validé
+(`rledger check` ✓), workspace compilé, fmt/clippy/tests verts.
+**Prochaine action : jalon 2** (`household-core`).
 
 ---
 
 ## En cours
 
-- [ ] **Jalon 1 — Squelette workspace + ledger d'exemple valide**
-  - Contexte de reprise : rien n'est encore créé à part `prompt.md` et ce fichier (branche `develop`).
-    Les versions/choix techniques sont consolidés dans « Questions ouvertes / limites » et la
-    section Reconnaissance plus bas. Commencer par la structure du dépôt du plan, puis le ledger,
-    puis l'outillage (justfile, hooks, CI).
+- [ ] **Jalon 2 — household-core : lecture et écriture du ledger**
+  - Contexte de reprise : lire d'abord « Reconnaissance » (API rustledger 0.24 vérifiées).
+    Clé de voûte : `rustledger_loader::load(path, &LoadOptions) -> Ledger` (directives
+    `Spanned<Directive>` + `SourceMap` pour localiser fichier/ligne, `balance_view()` +
+    `Inventory` pour les soldes). Écriture : append canonique via `rustledger_core::format`
+    dans `transactions/AAAA/MM.beancount` (globs inclus de main — jamais éditer main),
+    replace/remove par span exact, temp+rename. Binaire `household-cli` (sous-commandes
+    `check`, `balances`) appelé en repli par `githooks/pre-commit` + `just check-ledger`.
+    Types : `rustledger_core::NaiveDate` (jiff 0.2), `rust_decimal::Decimal`.
 
 ## À faire
 
 ### Jalon 1 — Squelette workspace + ledger d'exemple
 
-- [ ] `Cargo.toml` workspace : membres `crates/household-{core,budget,git,gui}`, `edition = "2021"` (ou 2024), dépendances racine épinglées : `rustledger-* =0.24.0`, `eframe/egui/egui_extras =0.37`, `egui_plot =0.38`, `rust_decimal =1.43`, `git2 =0.21`, `notify =8.2`, `thiserror =2`, `anyhow =1`, `serde`, `toml` ; `rust-toolchain.toml` (stable ≥ 1.9x, MSRV rustledger).
-- [ ] `LICENSE` GPL‑3.0 + mentions de licence dans les en-têtes de crates.
-- [ ] `.gitignore` (`/target`, `.env`, artefacts) + `.gitattributes` (`*.beancount text eol=lf`, `*.rs text eol=lf`).
-- [ ] `justfile` : `fmt`, `clippy` (`-D warnings`), `test`, `check` (tout), `check-ledger` (validation du ledger via `rledger`, repli `cargo run -p household-cli -- check`), `run` (GUI).
-- [ ] `/ledger/main.beancount` : options (`operating_currency "EUR"`), includes vers accounts/commodities/budgets/transactions.
-- [ ] `/ledger/commodities.beancount` : EUR (+ propriétés éventuelles).
-- [ ] `/ledger/accounts.beancount` : plan de comptes complet en français sans accents —
-  `Assets:Banque:CompteCourant`, `Assets:Epargne:LivretA` (métadonnée `ceiling: 22950.00 EUR`),
-  `Assets:Epargne:LDD` (`ceiling: 12000.00 EUR`), `Income:Salaires:Conjoint-1|Conjoint-2`,
-  `Income:Allocations-Familiales`, `Income:Interets:Livret-A|LDD`, `Income:Remboursements-Sante`,
-  `Income:Autres`, `Equity:Soldes-Ouverture`, et l'arborescence `Expenses:*` du cahier des charges
-  (Logement, Alimentation, Transport, Enfants, Sante, Loisirs, Vacances, Impots, Assurances,
-  Frais-Bancaires, Cadeaux, Habillement, Soins-Personnels, Divers).
-- [ ] `/ledger/budgets/2026.beancount` : grille budgétaire 2026 complète en `custom "budget"`
-  (postes Expenses + objectifs d'épargne sur `Assets:Epargne:*`), avec variantes datées en cours
-  d'année (ex. Courses 850→900 au 07‑01) et remises à zéro `0.00 EUR` (Vacances hors été).
-- [ ] `/ledger/transactions/2025/bilan.beancount` : ouverture 2025‑01‑01 (CC, LivretA, LDD) +
-  intérêts annuels 2025‑12‑31 (`Income:Interets:*`) + assertions de solde.
-- [ ] `/ledger/transactions/2026/01.beancount`, `02.beancount`, `03.beancount` : 3 mois réalistes
-  (salaires, loyer, charges, courses, cantine, carburant, mutuelle, transferts CC→LivretA/LDD,
-  remboursements santé, prélèvement à la source, tags/liens d'exemple).
-- [ ] Validation : `rledger check ledger/main.beancount` sans erreur (installer via `brew install rustledger`).
-- [ ] `/githooks/pre-commit` : validation du ledger (rledger, repli household-cli dès le jalon 2) + `just fmt --check` + clippy rapide sur les crates modifiés ; activation documentée `git config core.hooksPath githooks` (+ recette automatique dans `just setup`).
-- [ ] CI GitHub Actions `.github/workflows/ci.yml` : fmt, clippy `-D warnings`, `cargo test`, validation du ledger (`cargo binstall rustledger` puis `rledger check`).
-- [ ] `README.md` initial : présentation, structure, installation (rust, rledger), `just`, rôle du TODO.md.
-- [ ] Commit jalon 1 + basculer les tâches faites + remplir la section Reconnaissance en « Fait ».
+- [x] `Cargo.toml` workspace : membres `crates/household-{core,budget,git,gui}`, `edition = "2024"`,
+  dépendances épinglées `rustledger-* =0.24.0`, eframe/egui/egui_extras 0.37, egui_plot 0.38,
+  `rust_decimal 1.43`, `jiff 0.2` (chrono écarté), lints workspace (`unsafe_code = forbid`).
+- [x] `LICENSE` GPL‑3.0 (texte repris de rustledger) ; conteneurs de crate à licence workspace.
+- [x] `.gitignore` (`/target`, cache rledger `*.cache`, `Cargo.lock` versionné) + `.gitattributes` (LF forcé, `*.beancount` inclus).
+- [x] `justfile` : `setup` (hooksPath + chmod hook), `fmt`, `clippy -D warnings`, `test`, `check-ledger`
+  (rledger, repli household-cli J2+), `check`, `run`.
+- [x] `/ledger/main.beancount` : options + **includes globs** (`transactions/2025/*.beancount`,
+  `transactions/2026/*.beancount`) + budgets explicites — voir Q7 tranchée plus bas.
+- [x] `/ledger/commodities.beancount` : `commodity EUR` (avec date directive obligatoire).
+- [x] `/ledger/accounts.beancount` : plan de comptes complet FR sans accents, plafonds en
+  métadonnées `open` (`ceiling: 22950.00 EUR` etc. — validé par rustledger, MetaValue::Amount OK).
+- [x] `/ledger/budgets/2026.beancount` : 40+ directives `custom "budget"` (fixes 2026‑01‑01,
+  supersessions datées : Courses 850→900 au 07‑01, Taxe-Auto mars, Taxe-Foncière octobre,
+  fournitures septembre), **Vacances : une directive/mois avec `0.00 EUR` de remise à zéro**,
+  épargne budgétée sur `Assets:Epargne:*`.
+- [x] `/ledger/transactions/2025/bilan.beancount` : ouverture (2845.23 CC / 18450.12 LivretA /
+  9870.55 LDD via `Equity:Soldes-Ouverture`), intérêts 2025‑12‑31 (552.37 / 296.44, non imposables).
+- [x] `/ledger/transactions/2026/01–03.beancount` : 3 mois réalistes (salaires 2350/1890, CAF 155,
+  loyer+charges, factures, mutuelle, DGFiP, courses, cantine/périscolaire, carburant, virement
+  épargne 300/mois, santé+remboursements, tags/links, une `!` en attente), **assertions mensuelles
+  vérifiées à 00:00 (sémantique v3 → datées le 1er du mois suivant)**.
+- [x] Validation : `rledger check ledger/main.beancount` ✓ sans erreur ; `rledger report budget
+  --children` ✓ (le budget Assets/Expenses, supersession et pro‑rating se lisent correctement).
+- [x] `/githooks/pre-commit` : rangé exécutable dans git (mode 100755) — validation rledger si des
+  .beancount sont indexés, repli `household-cli` (J2). NB : bit exécutable **local** à refaire via
+  `just setup` (sandbox limitée, voir Q11).
+- [x] CI `.github/workflows/ci.yml` : fmt / clippy `-D warnings` / tests / ledger (`cargo-binstall rustledger`).
+- [x] `README.md` initial (état jalons, installation, structure, conventions).
+- [x] Commit jalon 1 : `30cc0ab`.
 
 ### Jalon 2 — household-core : lecture et écriture du ledger
 
@@ -159,7 +167,10 @@ Aucun code écrit pour l'instant. **Prochaine action : jalon 1.**
   crates.io — conclusion dans « Reconnaissance » ci‑dessous. **Décisions validées** : licence GPL‑3.0 ;
   budget d'épargne sur les comptes `Assets` destinataires.
 - [x] Plan des jalons 1→7 présenté et accepté (2026‑10‑29).
-- [x] `TODO.md` initialisé (ce fichier).
+- [x] `TODO.md` initialisé (commit `cfed560`).
+- [x] **Jalon 1 — squelette workspace + ledger d'exemple+ outillage (2026‑10‑29, `30cc0ab`)** :
+  `rledger check` ✓, `just fmt-check/clippy -D warnings/test` ✓ (workspace complet, eframe 0.37
+  compilé), 26 fichiers, licence GPL‑3.0, CI, hook pre-commit.
 
 ### Reconnaissance — capacités vérifiées de rustledger 0.24.0 (publié 2026‑09‑06)
 
@@ -195,12 +206,27 @@ Aucun code écrit pour l'instant. **Prochaine action : jalon 1.**
 6. **Persistance des réglages GUI** (toggles rollover, dernière année ouverte…) : ledger = source de
    vérité pour les données ; les préférences UI vivront dans un TOML de config local (`~/.config/…`),
    jamais dans le ledger. À confirmer au jalon 6.
-7. **Include des fichiers mensuels** : pour que le writer crée un fichier de mois sans éditer
-   `main.beancount`, prévoir un include par année (`transactions/2026/*.beancount` ou un
-   `transactions/2026.beancount` qui include les mois, selon le support des globs du loader — vérifié
-   : `is_glob_pattern` existe dans rustledger-loader). À trancher au jalon 1 et documenter ici.
+7. **Include des fichiers mensuels** — *décision tranchée au jalon 1* : `main.beancount` inclut des
+   **globs par année** (`transactions/2025/*.beancount`, `transactions/2026/*.beancount`).
+   Le loader rustledger (vérifié en test natif : ordre déterministe garanti, no‑match toléré)
+   garantit qu'aucun outil n'a besoin d'éditer `main.beancount` ; un fichier mensuel nouveau est
+   créé + référencé implicitement. Budgets inclus explicitement par année (visibilité des erreurs).
 8. **rustledger évolue vite** (0.24.0, licence commerciale en parallèle) : dépendances épinglées
    `=0.24.0` ; un `cargo update` ne se fait qu'après lecture du CHANGELOG, avec tests golden en garde‑fou.
+9. **Sémantique beancount v3 des assertions** — *découverte au jalon 1* : un `balance` à la date D
+   est vérifié à **00:00 de D** (strictement avant toute transaction de D) ; en plus, la directive
+   `commodity` exige une date. Convention adoptée : **assertions mensuelles datées le 1er du mois
+   suivant** (le writer du jalon 5 devra la respecter).
+10. **eframe 0.37 a changé le trait `App`** — *découverte au jalon 1* : `update(ctx, frame)` →
+   `logic(ctx, frame)` + `ui(&mut self, ui: &mut egui::Ui, frame)` (un `Ui` monté est remis ;
+   plus de `CentralPanel` obligatoire fondé sur `ctx`). Squelette adapté ; l'architecture du jalon 4
+   s'appuiera sur `logic` pour les commandes et `ui` pour les vues.
+11. **chmod local refusé par la sandbox d'exécution** — le bit exécutable du hook est correct dans
+   git (mode 100755, mode conservé partout) mais pas sur la copie de travail de l'environnement
+   d'agent ; `just setup` (chmod +x + hooksPath) le règle à la première exécution humaine. Sans effet
+   ni sur CI ni sur le hook en tant que contenu versionné.
+12. **Cache binaire rledger** (`ledger/.main.beancount.cache`) : ignoré (`*.cache`), le CLI rledger
+   invalide l'entrée à la modification des fichiers source.
 
 ## Idées / hors périmètre v1
 
