@@ -11,15 +11,15 @@
 > - Mise à jour **à chaque jalon et à chaque tâche significative**, dans le **même commit** que le code concerné.
 > - Les tâches découvertes en cours de route sont ajoutées immédiatement, pas perdues.
 
-**État du projet** : jalons 1→4 terminés (jalon 4 : GUI lecture seule). Ledger d'exemple
-validé (`rledger check` ✓), fmt/clippy `-D warnings`/tests verts (39 tests).
-**Prochaine action : jalon 5** (saisie et écriture de transactions).
+**État du projet** : jalons 1→5 terminés (jalon 5 : saisie + édition GUI). Ledger d'exemple
+validé (`rledger check` ✓), fmt/clippy `-D warnings`/tests verts (53 tests).
+**Prochaine action : jalon 6** (éditeur de budget).
 
 ---
 
 ## En cours
 
-_Néant — voir « À faire » (jalon 5)._
+_Néant — voir « À faire » (jalon 6)._
 
 ## À faire
 
@@ -203,16 +203,45 @@ crates ~/.cargo/registry/…-0.24.0 ; à revoir si épinglage un jour déplacé)
 
 ### Jalon 5 — Saisie et écriture de transactions
 
-- [ ] Écran **Saisie** : date, payee, narration, postings dynamiques (ajout/retrait de lignes,
-  solde automatique sur la contrepartie), montants en `Decimal`, autocomplétion comptes (ouverts à
-  la date) et payees (fréquence), tags `#` et liens `^`.
-- [ ] Validation en direct avant écriture : construction d'un `Ledger` enrichi en mémoire (ou
-  re-validation post‑écriture systématique avec rollback si échec) — choix documenté dans la UI.
-- [ ] Écriture dans le bon fichier mensuel via le writer du jalon 2 + déclenchement reload/watcher.
-- [ ] Édition/suppression depuis le Journal : remplacement du span exact, confirmation, revalidation
-  avant/d'après écriture.
-- [ ] Test bout en bout : saisie GUI (test headless de la commande) → fichier → snapshot → dashboard.
-- [ ] Commit jalon 5.
+- [x] Écran **Saisie** (`views/saisie.rs` + module pur `saisie.rs`) : date, flag `*`/`!`,
+  tiers, libellé, tags `#` et liens `^` (préfixe facultatif, dédupliqués), lignes de postings
+  dynamiques (＋/✕), montant par ligne (« 38.42 », « 10 USD », virgule acceptée), **ligne
+  d'équilibrage = champ vide** (une seule), bouton « Reporter X sur une nouvelle ligne »,
+  indicateur « reste à répartir » / « équilibrée ✓ » ; **autocomplétion** comptes (ouverts à
+  la date, fermés exclus — `InfoCompte` joints opens+closes dans le view-model) et tiers
+  (fréquence), suggestions cliquables sous le champ focalisé.
+- [x] Validation en direct : **deux niveaux** — (a) validation de *forme* immédiate dans le
+  module `saisie` (date, libellé, montants, équilibre PAR DEVISE — sémantique beancount v2+),
+  (b) la validation **autorisée** reste la pré-vérification scratch du writer (compte fermé,
+  devise interdite, assertion cassée → refus). Choix documenté dans la UI.
+- [x] **Ligne d'équilibrage explicite** : la contrepartie calculée est écrite avec son montant
+  (pas de posting élidé dans le fichier) — déterministe, zéro interpolation au chargement.
+- [x] Écriture dans le bon fichier mensuel via le writer du jalon 2 (`Command::Ecrire`) ;
+  le worker recharge un snapshot **frais** avant d'écrire, puis reconstruit le view-model
+  (`LoadOutcome::Ecrit` : données fraîches + message du fichier cible, retour au journal,
+  flash vert ; `LoadOutcome::Refuse` : flash rouge, ledger intact).
+- [x] Édition/suppression depuis le Journal : boutons dans le détail, suppression en deux
+  clics (confirmation locale) ; **relocalisation par empreinte** (date+tiers+libellé,
+  `worker::localiser`) avant tout replace/remove — si le ledger a changé depuis le chargement,
+  refus lisible au lieu d'éditer la mauvaise ligne.
+- [x] Test bout en bout **headless** (`tests/e2e_saisie.rs`) : saisie → conversion → writer →
+  snapshot → view-model (journal contient la ligne avec sa source, dashboard suit : 6877.39 →
+  6852.39 → 6827.39 → 6877.39 après suppression) ; relocalisation (index erroné mais empreinte
+  valide OK, empreinte absente refusée) ; refus d'écriture sur compte inexistant.
+- [x] Tests pur saisie (11) : parsing montant/devise/virgule, tags/liens, erreurs de forme,
+  double ligne d'équilibrage refusée, devises mélangées avec élidée refusée, équilibre par
+  groupe de devise OK, pré-remplissage round-trip, complétion comptes (ouverture/fermeture)
+  et payees (fréquence), empreinte. Total : 53 tests verts.
+- [x] Commit jalon 5.
+
+**Découvertes du jalon 5** :
+- Beancount équilibre **par groupe de devise** (chaque devise doit sommer à zéro, sauf prix) —
+  la validation de forme du brouillon suit cette sémantique ; une transaction −100 EUR /
+  +90 USD sans annotation de prix n'est PAS équilibrée (casse-piège corrigé dans le test).
+- `Transaction.tags`/`links` sont `Vec<Tag>`/`Vec<Link>` (newtypes) et le formateur canonique
+  les rend dans le header (`#tag ^lien`) — l'aller-retour saisie→fichier préserve tout.
+- `Close { date, account }` joint aux `Open` donne les bornes d'existence par compte
+  (`InfoCompte`), base de l'autocomplétion « ouverts à la date ».
 
 ### Jalon 6 — Éditeur de budget
 
@@ -268,6 +297,12 @@ crates ~/.cargo/registry/…-0.24.0 ; à revoir si épinglage un jour déplacé)
   réel, courbe egui_plot), journal filtrable/paginé avec détail fichier:ligne, bannières
   d'erreurs ; crate lib+bin ; 12 tests GUI (6 unitaires filtres/fmt + 6 view-model croisés
   avec rledger) — total 39 tests verts. Découvertes egui 0.37 ci‑dessus.
+- [x] **Jalon 5 — saisie et écriture de transactions (2026‑10‑29)** : écran Saisie (postings
+  dynamiques, équilibrage par devise, contrepartie explicite, autocomplétion comptes ouverts à
+  la date + tiers par fréquence, tags/liens), deux niveaux de validation (forme immédiate +
+  pré-vérification scratch autoritaire), Command::Ecrire/Modifier/Supprimer dans le worker,
+  relocalisation par empreinte, édition/suppression depuis le journal (double-clic de
+  confirmation) ; test headless bout en bout ; 53 tests verts au total (26 GUI).
 
 ### Reconnaissance — capacités vérifiées de rustledger 0.24.0 (publié 2026‑09‑06)
 

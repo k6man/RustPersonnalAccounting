@@ -5,6 +5,7 @@
 
 pub mod dashboard;
 pub mod journal;
+pub mod saisie;
 
 use egui::Color32;
 

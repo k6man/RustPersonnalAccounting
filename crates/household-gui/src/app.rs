@@ -15,20 +15,22 @@ use egui::RichText;
 use crate::viewmodel::UiData;
 use crate::worker::{Command, LoadOutcome};
 
-/// Les écrans de la milestone 4 (budgets → jalon 6, saisie → jalon 5).
+/// Les écrans de l'application (budgets → jalon 6, rapports → jalon 7).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Onglet {
     TableauDeBord,
     Journal,
+    Saisie,
 }
 
 impl Onglet {
-    const TOUS: [Onglet; 2] = [Onglet::TableauDeBord, Onglet::Journal];
+    const TOUS: [Onglet; 3] = [Onglet::TableauDeBord, Onglet::Journal, Onglet::Saisie];
 
     fn libelle(self) -> &'static str {
         match self {
             Self::TableauDeBord => "Tableau de bord",
             Self::Journal => "Journal",
+            Self::Saisie => "Saisie",
         }
     }
 }
@@ -48,11 +50,14 @@ pub struct FoyerApp {
     donnees: Option<Arc<UiData>>,
     /// Échec du dernier chargement (le ledger est cassé).
     echec: Option<String>,
-    /// Rechargement en cours ?
+    /// Rechargement / écriture en cours ?
     en_chargement: bool,
+    /// Message transitoire (écriture réussie / refusée).
+    flash: Option<(String, bool)>, // (texte, est_erreur)
 
     onglet: Onglet,
     journal: crate::views::journal::UiState,
+    saisie: crate::views::saisie::UiState,
 }
 
 impl FoyerApp {
@@ -68,8 +73,10 @@ impl FoyerApp {
             donnees: None,
             echec: None,
             en_chargement: true,
+            flash: None,
             onglet: Onglet::TableauDeBord,
             journal: crate::views::journal::UiState::new(),
+            saisie: crate::views::saisie::UiState::nouveau(crate::worker::aujourd_hui()),
         }
     }
 
@@ -91,6 +98,17 @@ impl eframe::App for FoyerApp {
                 LoadOutcome::Echec(echec) => {
                     // L'état précédent reste affiché sous l'erreur.
                     self.echec = Some(echec);
+                }
+                LoadOutcome::Ecrit { donnees, message } => {
+                    self.donnees = Some(donnees);
+                    self.echec = None;
+                    self.flash = Some((message, false));
+                    // Après une écriture, on retourne au journal pour la voir.
+                    self.onglet = Onglet::Journal;
+                    self.journal.selection = None;
+                }
+                LoadOutcome::Refuse(refus) => {
+                    self.flash = Some((refus, true));
                 }
             }
             self.en_chargement = false;
@@ -170,7 +188,7 @@ impl eframe::App for FoyerApp {
         }
 
         egui::CentralPanel::default().show(ui, |ui| {
-            // Barre d'onglets.
+            // Barre d'onglets + flash.
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 12.0;
                 for onglet in Onglet::TOUS {
@@ -179,6 +197,19 @@ impl eframe::App for FoyerApp {
                         .clicked()
                     {
                         self.onglet = onglet;
+                    }
+                }
+                if let Some((message, est_erreur)) = &self.flash {
+                    let couleur = if *est_erreur {
+                        egui::Color32::from_rgb(0xd8, 0x3b, 0x2f)
+                    } else {
+                        egui::Color32::from_rgb(0x3f, 0xa7, 0x60)
+                    };
+                    if ui
+                        .label(RichText::new(format!("— {message}")).color(couleur))
+                        .clicked()
+                    {
+                        self.flash = None; // clic = acquittement
                     }
                 }
             });
@@ -190,7 +221,43 @@ impl eframe::App for FoyerApp {
                     crate::views::dashboard::afficher(ui, &donnees.tableau_de_bord);
                 }
                 (Some(donnees), Onglet::Journal) => {
-                    crate::views::journal::afficher(ui, &donnees.journal, &mut self.journal);
+                    let action =
+                        crate::views::journal::afficher(ui, &donnees.journal, &mut self.journal);
+                    match action {
+                        Some(crate::views::journal::ActionJournal::Modifier(index)) => {
+                            // Pré-remplit la saisie depuis la ligne du journal.
+                            if let Some(ligne) =
+                                donnees.journal.lignes.iter().find(|l| l.index == index)
+                            {
+                                self.saisie = crate::views::saisie::UiState::modification(ligne);
+                                self.onglet = Onglet::Saisie;
+                            }
+                        }
+                        Some(crate::views::journal::ActionJournal::Supprimer(index)) => {
+                            self.demander_suppression(index);
+                        }
+                        None => {}
+                    }
+                }
+                (Some(donnees), Onglet::Saisie) => {
+                    let action = crate::views::saisie::afficher(
+                        ui,
+                        &mut self.saisie,
+                        &donnees.comptes,
+                        &donnees.payees,
+                    );
+                    match action {
+                        Some(crate::views::saisie::Action::Enregistrer) => {
+                            self.envoyer_brouillon();
+                        }
+                        Some(crate::views::saisie::Action::Annuler) => {
+                            self.saisie = crate::views::saisie::UiState::nouveau(
+                                crate::worker::aujourd_hui(),
+                            );
+                            self.onglet = Onglet::Journal;
+                        }
+                        None => {}
+                    }
                 }
                 (None, _) => {
                     ui.centered_and_justified(|ui| {
@@ -199,7 +266,7 @@ impl eframe::App for FoyerApp {
                             ui.add(egui::widgets::Spinner::new().size(42.0));
                             ui.add_space(12.0);
                             ui.label("Chargement du ledger…");
-                            if !self.echec.is_some() {
+                            if self.echec.is_none() {
                                 ui.label(
                                     RichText::new(self.main.display().to_string())
                                         .weak()
@@ -211,5 +278,49 @@ impl eframe::App for FoyerApp {
                 }
             }
         });
+    }
+}
+
+impl FoyerApp {
+    /// Envoie le brouillon au worker (création ou modification selon le mode).
+    fn envoyer_brouillon(&mut self) {
+        self.en_chargement = true;
+        self.flash = None;
+        match &self.saisie.mode {
+            crate::views::saisie::Mode::Nouveau => {
+                self.cmd_tx
+                    .send(Command::Ecrire(self.saisie.brouillon.clone()))
+                    .ok();
+            }
+            crate::views::saisie::Mode::Modification { index, empreinte } => {
+                self.cmd_tx
+                    .send(Command::Modifier {
+                        index: *index,
+                        empreinte: empreinte.clone(),
+                        brouillon: self.saisie.brouillon.clone(),
+                    })
+                    .ok();
+            }
+        }
+        // Brouillon réinitialisé : prêt pour la saisie suivante.
+        self.saisie = crate::views::saisie::UiState::nouveau(crate::worker::aujourd_hui());
+    }
+
+    /// Demande la suppression (index + empreinte pour la relocalisation).
+    fn demander_suppression(&mut self, index: usize) {
+        let Some(donnees) = &self.donnees else {
+            return;
+        };
+        let Some(ligne) = donnees.journal.lignes.iter().find(|l| l.index == index) else {
+            return;
+        };
+        self.en_chargement = true;
+        self.flash = None;
+        self.cmd_tx
+            .send(Command::Supprimer {
+                index,
+                empreinte: crate::saisie::Empreinte::de_ligne(ligne),
+            })
+            .ok();
     }
 }

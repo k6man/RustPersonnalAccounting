@@ -11,6 +11,15 @@ use crate::filters::{Pagination, date_optionnelle, montant_optionnel};
 use crate::fmt;
 use crate::viewmodel::{JournalData, LigneJournal};
 
+/// Action demandée par l'écran journal vers l'application (jalon 5).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ActionJournal {
+    /// Ouvrir la transaction dans l'écran Saisie (mode modification).
+    Modifier(usize),
+    /// Supprimer la transaction (confirmée par double clic côté vue).
+    Supprimer(usize),
+}
+
 /// État d'interface du journal (saisies + sélection) — pas de logique métier.
 #[derive(Debug, Clone, Default)]
 pub struct UiState {
@@ -24,6 +33,8 @@ pub struct UiState {
     pub page: usize,
     pub par_page: usize,
     pub selection: Option<usize>,
+    /// Suppression en attente de confirmation (index de l'entrée).
+    pub suppression_confirmee: Option<usize>,
 }
 
 impl UiState {
@@ -35,9 +46,13 @@ impl UiState {
     }
 }
 
-/// Dessine l'écran journal. Retourne l'index d'entrée sélectionné (pour
-/// l'édition au jalon 5).
-pub fn afficher(ui: &mut egui::Ui, journal: &JournalData, etat: &mut UiState) {
+/// Dessine l'écran journal. Retourne l'action demandée (jalon 5).
+pub fn afficher(
+    ui: &mut egui::Ui,
+    journal: &JournalData,
+    etat: &mut UiState,
+) -> Option<ActionJournal> {
+    let mut action = None;
     // 1. Filtres (saisie → parsing pur).
     panneau_filtres(ui, etat);
 
@@ -199,13 +214,39 @@ pub fn afficher(ui: &mut egui::Ui, journal: &JournalData, etat: &mut UiState) {
         }
     });
 
-    // 6. Détail de l'écriture sélectionnée.
+    // 6. Détail de l'écriture sélectionnée + actions d'édition (jalon 5).
     if let Some(index) = etat.selection
         && let Some(ligne) = journal.lignes.iter().find(|l| l.index == index)
     {
         ui.add_space(8.0);
         panneau_detail(ui, ligne);
+        ui.add_space(4.0);
+        ui.horizontal(|ui| {
+            if ui.button("✎ Modifier").clicked() {
+                action = Some(ActionJournal::Modifier(index));
+            }
+            // Suppression en deux clics (confirmation locale).
+            if etat.suppression_confirmee == Some(index) {
+                if ui
+                    .button(
+                        RichText::new("⚠ Confirmer la suppression")
+                            .color(egui::Color32::from_rgb(0xd8, 0x3b, 0x2f)),
+                    )
+                    .clicked()
+                {
+                    etat.suppression_confirmee = None;
+                    action = Some(ActionJournal::Supprimer(index));
+                }
+                if ui.button("Annuler").clicked() {
+                    etat.suppression_confirmee = None;
+                }
+            } else if ui.button("Supprimer").clicked() {
+                etat.suppression_confirmee = Some(index);
+            }
+        });
     }
+
+    action
 }
 
 /// Libellé cliquable qui marque la sélection (plus fort quand sélectionnée).

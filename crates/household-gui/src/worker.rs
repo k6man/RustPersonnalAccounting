@@ -1,38 +1,59 @@
-//! Thread worker unique : rechargement du ledger hors UI thread.
+//! Thread worker unique : rechargement du ledger hors UI thread **et**
+//! écritures (jalon 5) via les garanties du writer de `household-core`
+//! (pré-vérification sur copie scratch, atomicité, revalidation).
 //!
-//! Architecture (cf. TODO jalon 4) :
+//! Architecture :
 //! - UI / watcher → `Sender<Command>` ; worker → `Receiver<LoadOutcome>` ;
-//! - un seul worker : les commandes sont sérialisées, le debounce écrête les
-//!   rafales du watcher (une sauvegarde de fichier = plusieurs événements) ;
-//! - le worker appelle `ctx.request_repaint()` à l'envoi du résultat : la GUI
-//!   se redessine sans poller plus vite que nécessaire.
+//! - un seul worker : les commandes (rechargements et écritures) sont
+//!   sérialisées, le debounce écrête les rafales du watcher ;
+//! - le worker appelle `ctx.request_repaint()` à l'envoi de chaque résultat.
 
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::sync::mpsc::{Receiver, Sender};
 use std::thread;
 use std::time::Duration;
 
+use rustledger_core::Directive;
 use rustledger_core::NaiveDate;
 
-use notify::Watcher as _;
-
+use crate::saisie::{Brouillon, Empreinte};
 use crate::viewmodel::{self, UiData};
 
 /// Commandes de l'UI / du watcher vers le worker.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug)]
 pub enum Command {
     /// Recharger et revalider le ledger complet.
     Reload,
+    /// Écrire une nouvelle transaction (fichier mensuel de sa date).
+    Ecrire(Brouillon),
+    /// Remplacer une transaction existante (même date : span exact ;
+    /// autre date : suppression + réinsertion triée).
+    Modifier {
+        index: usize,
+        empreinte: Empreinte,
+        brouillon: Brouillon,
+    },
+    /// Supprimer une transaction existante.
+    Supprimer { index: usize, empreinte: Empreinte },
 }
 
 /// Réponses du worker vers l'UI.
 #[derive(Debug, Clone)]
 pub enum LoadOutcome {
     /// Ledger chargé et validé, view-model prêt.
-    Pret(std::sync::Arc<UiData>),
+    Pret(Arc<UiData>),
     /// Échec de chargement (include manquant, fichier corrompu…) : l'état
     /// précédent reste affiché avec l'erreur.
     Echec(String),
+    /// Écriture réussie → données fraîches + message (fichier cible).
+    Ecrit {
+        donnees: Arc<UiData>,
+        message: String,
+    },
+    /// Écriture refusée (validation locale ou pré-vérification) : le ledger
+    /// est inchangé, un message lisible accompagne le refus.
+    Refuse(String),
 }
 
 /// Délai de « settle » avant rechargement après un événement du watcher :
@@ -62,6 +83,24 @@ pub fn demarrer(ctx: egui::Context, main: PathBuf) -> (Sender<Command>, Receiver
                     out_tx.send(charger(&main)).ok();
                     ctx.request_repaint();
                 }
+                Command::Ecrire(brouillon) => {
+                    out_tx.send(ecrire(&main, &brouillon)).ok();
+                    ctx.request_repaint();
+                }
+                Command::Modifier {
+                    index,
+                    empreinte,
+                    brouillon,
+                } => {
+                    out_tx
+                        .send(modifier(&main, index, &empreinte, &brouillon))
+                        .ok();
+                    ctx.request_repaint();
+                }
+                Command::Supprimer { index, empreinte } => {
+                    out_tx.send(supprimer(&main, index, &empreinte)).ok();
+                    ctx.request_repaint();
+                }
             }
         }
         // Canal des commandes fermé (fermeture de l'app) : arrêt.
@@ -71,25 +110,149 @@ pub fn demarrer(ctx: egui::Context, main: PathBuf) -> (Sender<Command>, Receiver
 }
 
 fn charger(main: &Path) -> LoadOutcome {
-    let aujourdhui = aujourd_hui();
     let snapshot = household_core::Snapshot::load(main);
     match snapshot {
-        Ok(snapshot) => match viewmodel::build(&snapshot, aujourdhui) {
-            Ok(data) => LoadOutcome::Pret(std::sync::Arc::new(data)),
+        Ok(snapshot) => match viewmodel::build(&snapshot, aujourd_hui()) {
+            Ok(data) => LoadOutcome::Pret(Arc::new(data)),
             Err(e) => LoadOutcome::Echec(e),
         },
         Err(e) => LoadOutcome::Echec(e.to_string()),
     }
 }
 
+fn ecrire(main: &Path, brouillon: &Brouillon) -> LoadOutcome {
+    let transaction = match brouillon.vers_transaction() {
+        Ok(transaction) => transaction,
+        Err(erreurs) => return LoadOutcome::Refuse(erreurs.join(" · ")),
+    };
+    let date = transaction.date;
+    let snapshot = match household_core::Snapshot::load(main) {
+        Ok(snapshot) => snapshot,
+        Err(e) => return LoadOutcome::Echec(e.to_string()),
+    };
+    match household_core::append_transaction(&snapshot, &transaction) {
+        Ok(nouveau) => match donnees_fraiches(&nouveau) {
+            Ok(donnees) => LoadOutcome::Ecrit {
+                donnees,
+                message: format!(
+                    "écrite dans {}",
+                    household_core::monthly_file(main, date).display()
+                ),
+            },
+            Err(e) => LoadOutcome::Echec(e),
+        },
+        Err(e) => LoadOutcome::Refuse(format!("écriture refusée : {e}")),
+    }
+}
+
+fn modifier(
+    main: &Path,
+    index: usize,
+    empreinte: &Empreinte,
+    brouillon: &Brouillon,
+) -> LoadOutcome {
+    let transaction = match brouillon.vers_transaction() {
+        Ok(transaction) => transaction,
+        Err(erreurs) => return LoadOutcome::Refuse(erreurs.join(" · ")),
+    };
+    let snapshot = match household_core::Snapshot::load(main) {
+        Ok(snapshot) => snapshot,
+        Err(e) => return LoadOutcome::Echec(e.to_string()),
+    };
+    // L'index vient d'un snapshot antérieur : relocalisation par empreinte
+    // (date + tiers + libellé), sinon refus — jamais la mauvaise ligne.
+    let index_actuel = match localiser(&snapshot, index, empreinte) {
+        Ok(index) => index,
+        Err(e) => return LoadOutcome::Refuse(e),
+    };
+    match household_core::replace_transaction(&snapshot, index_actuel, &transaction) {
+        Ok(nouveau) => match donnees_fraiches(&nouveau) {
+            Ok(donnees) => LoadOutcome::Ecrit {
+                donnees,
+                message: format!(
+                    "modifiée dans {}",
+                    household_core::monthly_file(main, transaction.date).display()
+                ),
+            },
+            Err(e) => LoadOutcome::Echec(e),
+        },
+        Err(e) => LoadOutcome::Refuse(format!("modification refusée : {e}")),
+    }
+}
+
+fn supprimer(main: &Path, index: usize, empreinte: &Empreinte) -> LoadOutcome {
+    let snapshot = match household_core::Snapshot::load(main) {
+        Ok(snapshot) => snapshot,
+        Err(e) => return LoadOutcome::Echec(e.to_string()),
+    };
+    let index_actuel = match localiser(&snapshot, index, empreinte) {
+        Ok(index) => index,
+        Err(e) => return LoadOutcome::Refuse(e),
+    };
+    match household_core::remove_transaction(&snapshot, index_actuel) {
+        Ok(nouveau) => match donnees_fraiches(&nouveau) {
+            Ok(donnees) => LoadOutcome::Ecrit {
+                donnees,
+                message: "transaction supprimée".to_string(),
+            },
+            Err(e) => LoadOutcome::Echec(e),
+        },
+        Err(e) => LoadOutcome::Refuse(format!("suppression refusée : {e}")),
+    }
+}
+
+/// Relocalise une transaction après un rechargement : l'index d'origine est
+/// accepté s'il pointe toujours sur la même empreinte (date + tiers +
+/// libellé) ; sinon recherche dans tout le ledger ; sinon erreur lisible.
+pub fn localiser(
+    snapshot: &household_core::Snapshot,
+    index: usize,
+    empreinte: &Empreinte,
+) -> Result<usize, String> {
+    let correspond = |directive: &Directive| match directive {
+        Directive::Transaction(t) => {
+            t.date == empreinte.date
+                && t.payee.as_ref().map_or(empreinte.tiers.is_none(), |p| {
+                    Some(p.as_str().to_string()) == empreinte.tiers
+                })
+                && t.narration.as_str() == empreinte.libelle
+        }
+        _ => false,
+    };
+    if let Some(entree) = snapshot.entries().get(index)
+        && correspond(&entree.value)
+    {
+        return Ok(index);
+    }
+    snapshot
+        .entries()
+        .iter()
+        .position(|entree| correspond(&entree.value))
+        .ok_or_else(|| {
+            format!(
+                "la transaction du {} ({:?}) n'est plus trouvée — le ledger a \
+                 peut-être changé : rechargez",
+                empreinte.date, empreinte.libelle
+            )
+        })
+}
+
+/// View-model sur le snapshot **frais** post-écriture. Le writer a déjà
+/// revalidé le ledger : un échec ici est un bug défensif (→ `Echec`).
+fn donnees_fraiches(snapshot: &household_core::Snapshot) -> Result<Arc<UiData>, String> {
+    viewmodel::build(snapshot, aujourd_hui()).map(Arc::new)
+}
+
 /// Surveille le répertoire du ledger (récursif) et demande un rechargement à
 /// chaque événement (le worker débonce). Le watcher retourné doit rester
 /// vivant : le détruire arrête la surveillance.
 ///
-/// # Erreurs
+/// # Panics
 /// Panique si le répertoire du ledger n'existe pas ou est inobservable :
 /// sans watcher, la GUI doit s'arrêter tôt plutôt que se croire à jour.
 pub fn demarrer_watcher(main: &Path, cmd_tx: Sender<Command>) -> notify::RecommendedWatcher {
+    use notify::Watcher as _;
+
     let dossier = main
         .parent()
         .map(Path::to_path_buf)

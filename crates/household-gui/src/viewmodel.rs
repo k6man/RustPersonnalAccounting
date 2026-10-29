@@ -24,6 +24,19 @@ pub struct UiData {
     pub journal: JournalData,
     /// Erreurs de validation du ledger (bannière).
     pub erreurs: Vec<LigneErreur>,
+    /// Comptes (ouverts/fermés) pour l'autocomplétion de saisie.
+    pub comptes: Vec<InfoCompte>,
+    /// Tiers par fréquence pour l'autocomplétion de saisie.
+    pub payees: Vec<(String, usize)>,
+}
+
+/// Un compte du plan, avec ses bornes d'existence.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InfoCompte {
+    pub nom: String,
+    pub ouverture: NaiveDate,
+    /// Date de fermeture, s'il est fermé.
+    pub fermeture: Option<NaiveDate>,
 }
 
 /// Une erreur de validation, prête pour la bannière.
@@ -247,7 +260,38 @@ pub fn build(snapshot: &Snapshot, aujourdhui: NaiveDate) -> Result<UiData, Strin
             lignes: lignes_journal(snapshot)?,
         },
         erreurs,
+        comptes: comptes_du_plan(snapshot),
+        payees: snapshot.payees(),
     })
+}
+
+/// Le plan de comptes : opens + closes joints (bornes d'existence).
+fn comptes_du_plan(snapshot: &Snapshot) -> Vec<InfoCompte> {
+    let mut comptes: BTreeMap<String, (NaiveDate, Option<NaiveDate>)> = BTreeMap::new();
+    for entree in snapshot.entries() {
+        match &entree.value {
+            Directive::Open(open) => {
+                comptes
+                    .entry(open.account.as_str().to_string())
+                    .or_insert((open.date, None));
+            }
+            Directive::Close(close) => {
+                comptes
+                    .entry(close.account.as_str().to_string())
+                    .and_modify(|(_, fermeture)| *fermeture = Some(close.date))
+                    .or_insert((close.date, Some(close.date)));
+            }
+            _ => {}
+        }
+    }
+    comptes
+        .into_iter()
+        .map(|(nom, (ouverture, fermeture))| InfoCompte {
+            nom,
+            ouverture,
+            fermeture,
+        })
+        .collect()
 }
 
 // ------------------------------------------------------------------ helpers ---

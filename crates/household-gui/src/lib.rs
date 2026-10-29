@@ -13,6 +13,7 @@
 pub mod app;
 pub mod filters;
 pub mod fmt;
+pub mod saisie;
 pub mod viewmodel;
 pub mod views;
 pub mod worker;
