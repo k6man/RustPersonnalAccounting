@@ -11,15 +11,15 @@
 > - Mise à jour **à chaque jalon et à chaque tâche significative**, dans le **même commit** que le code concerné.
 > - Les tâches découvertes en cours de route sont ajoutées immédiatement, pas perdues.
 
-**État du projet** : jalons 1→5 terminés (jalon 5 : saisie + édition GUI). Ledger d'exemple
-validé (`rledger check` ✓), fmt/clippy `-D warnings`/tests verts (53 tests).
-**Prochaine action : jalon 6** (éditeur de budget).
+**État du projet** : jalons 1→6 terminés (jalon 6 : éditeur de budget). Ledger d'exemple
+validé (`rledger check` ✓), fmt/clippy `-D warnings`/tests verts (69 tests).
+**Prochaine action : jalon 7** (rapports, git, polish).
 
 ---
 
 ## En cours
 
-_Néant — voir « À faire » (jalon 6)._
+_Néant — voir « À faire » (jalon 7)._
 
 ## À faire
 
@@ -245,14 +245,45 @@ crates ~/.cargo/registry/…-0.24.0 ; à revoir si épinglage un jour déplacé)
 
 ### Jalon 6 — Éditeur de budget
 
-- [ ] Écran **Budget** : grille postes × 12 mois éditable (`TableWidget`), année selectable,
-  indicateurs d'écart par cellule (réel affiché en dessous), totaux ligne/colonne, groupes hiérarchiques
-  repliables.
-- [ ] Écriture d'une cellule → directive via le writer chirurgical du jalon 3 ; affichage du diff attendu.
-- [ ] Duplication d'année avec ajustement % (dialogue), bouton « générer l'année N+1 ».
-- [ ] Lignes d'épargne (budgétées sur `Assets:Epargne:*`) affichées avec la note sur les intérêts.
-- [ ] Toggles rollover par famille/groupes, persistés où ? (voir Questions ouvertes #6).
-- [ ] Commit jalon 6.
+- [x] Écran **Budget** (`views/budget.rs` + module pur `budget.rs`) : grille postes × 12 mois,
+  sélecteur d'année (◀/▶), **arbre hiérarchique repliable avec groupes SYNTHÉTISÉS** — le
+  ledger réel ne budgete que les feuilles : un préfixe intermédiaire sans directive propre
+  devient un nœud d'agrégation (somme des lignes budgétées **de tête** de sa sous-arborescence,
+  chaque budget compté une fois — un intermédiaire budgété n'est jamais re-sommé).
+- [x] Cellules éditable : budget cliquable (postes avec directive propre ; groupes en lecture
+  seule avec agrégat affiché), **réel affiché dessous** coloré si dépassement, totaux par ligne
+  (année) et par colonne (`grid.totals` — chaque budget compté une fois).
+- [x] **Diff attendu avant écriture** : barre de confirmation sous la grille
+  (« Habillement — mars : 75,00 € → 95,00 € ») + explication de la supersession ; puis
+  `Command::CelluleBudget` → `household_budget::writer::set_cell` (token montant seul,
+  round-trip identique à valeur égale).
+- [x] **Duplication d'année** : bouton « Générer N+1… », dialogue (ajustement % DragValue,
+  pas d'arrondi centimes/1 €/5 €) → `duplicate_year` + `write_year` (refus d'écrasement
+  intact), grille N+1 disponible après reload.
+- [x] **Lignes d'épargne** : note « intérêts inclus dans le réel » sur `Assets:Epargne:*`.
+- [x] **Toggles rollover** (Q6 tranchée) : case à cocher sur les lignes de tête de l'arbre ;
+  état persisté dans **`~/.config/compta-foyer.toml`** (jamais le ledger), tolérant (fichier
+  absent/corrompu → défauts, `$HOME` absent → mémoire seule + flash) ; rollover actif =
+  cellules affichent le **disponible cumulé** (report initial 0, report négatif autorisé,
+  sémantique « cumul annuel » verrouillée au jalon 3) + colonne Année = report sortant.
+- [x] View-model : `grilles: BTreeMap<i16, BudgetGrid>` par année budgétée +
+  `directives_budget` triées (date, compte) — base du sélecteur et du diff ; la carte du
+  tableau de bord dérive de la grille de l'année courante.
+- [x] Tests : +16 GUI (7 pur budget : arbre/ancêtres/visibilité/têtes sans double-comptage/
+  rollover/total-mois ; 3 config TOML round-trip/bascule/corrompu ; 5 budget_gui sur ledger
+  réel : grille + hiérarchie synthétisée, directives triées, édition juin→supersession
+  reflétée, génération 2027, rollover Vacances) — **69 tests verts** au total.
+- [x] Commit jalon 6.
+
+**Découvertes du jalon 6** :
+- Les budgets du ledger réel sont posés sur les **feuilles** — `Expenses:Enfants` etc. n'ont
+  PAS de ligne dans la grille (`compare` n'invente pas de ligne sans directive). L'éditeur
+  synthétise donc l'arbre des préfixes : agrégat = somme des lignes **de tête** (une ligne
+  dont un ancêtre est budgété est déjà couverte par son agrégat — jamais re-sommée).
+- **Q6 tranchée** : préférences GUI (toggles rollover) dans `~/.config/compta-foyer.toml`,
+  jamais dans le ledger — conformément à la décision pré-encadrée au jalon 1.
+- egui : le même `&mut etat` ne peut pas être emprunté dans une closure de layout et
+  modifié après — capturer les clics en variables locales puis appliquer hors closure.
 
 ### Jalon 7 — Rapports, git, polish
 
@@ -303,6 +334,11 @@ crates ~/.cargo/registry/…-0.24.0 ; à revoir si épinglage un jour déplacé)
   pré-vérification scratch autoritaire), Command::Ecrire/Modifier/Supprimer dans le worker,
   relocalisation par empreinte, édition/suppression depuis le journal (double-clic de
   confirmation) ; test headless bout en bout ; 53 tests verts au total (26 GUI).
+- [x] **Jalon 6 — éditeur de budget (2026‑10‑29)** : arbre hiérarchique repliable avec groupes
+  synthétisés (agrégat = somme des têtes, jamais de double-comptage), cellules éditable avec
+  diff de confirmation + supersession expliquée, réel sous budget, totaux ligne/colonne,
+  duplication N+1 (dialogue %/pas), note intérêts sur l'épargne, rollover par famille
+  persisté en TOML local (Q6 tranchée) ; 69 tests verts au total (42 GUI).
 
 ### Reconnaissance — capacités vérifiées de rustledger 0.24.0 (publié 2026‑09‑06)
 

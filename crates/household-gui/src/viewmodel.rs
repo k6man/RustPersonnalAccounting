@@ -12,6 +12,7 @@ use rustledger_core::{AccountTypes, Directive, NaiveDate};
 
 use household_budget::BudgetGrid;
 use household_core::Snapshot;
+use rustledger_budget::Budgets;
 
 /// Toutes les données dont les vues ont besoin, prêtes à afficher.
 #[derive(Debug, Clone)]
@@ -28,6 +29,20 @@ pub struct UiData {
     pub comptes: Vec<InfoCompte>,
     /// Tiers par fréquence pour l'autocomplétion de saisie.
     pub payees: Vec<(String, usize)>,
+    /// Grilles budgétaires par année budgétée (éditeur de budget).
+    pub grilles: BTreeMap<i16, household_budget::BudgetGrid>,
+    /// Directives `custom "budget"` du ledger, triées — base du diff et du
+    /// sélecteur d'années.
+    pub directives_budget: Vec<DirectiveBudget>,
+}
+
+/// Une directive `custom "budget"` telle qu'écrite dans le ledger.
+#[derive(Debug, Clone)]
+pub struct DirectiveBudget {
+    pub date: NaiveDate,
+    pub compte: String,
+    pub intervalle: String,
+    pub montant: Decimal,
 }
 
 /// Un compte du plan, avec ses bornes d'existence.
@@ -203,6 +218,21 @@ pub fn build(snapshot: &Snapshot, aujourdhui: NaiveDate) -> Result<UiData, Strin
         expenses: snapshot.ledger().options.name_expenses.clone(),
     };
 
+    let directives: Vec<Directive> = snapshot.entries().iter().map(|e| e.value.clone()).collect();
+
+    // Grilles budgétaires par année budgétée (éditeur + carte du mois).
+    let budgets = Budgets::from_directives(&directives);
+    let mut annees: Vec<i16> = budgets.entries().map(|entree| entree.from.year()).collect();
+    annees.sort_unstable();
+    annees.dedup();
+    let mut grilles = BTreeMap::new();
+    for annee_budget in &annees {
+        grilles.insert(
+            *annee_budget,
+            BudgetGrid::build(&directives, &types, *annee_budget),
+        );
+    }
+
     let soldes = soldes_par_compte(snapshot)?;
     let jauges = snapshot
         .ceilings()
@@ -218,19 +248,22 @@ pub fn build(snapshot: &Snapshot, aujourdhui: NaiveDate) -> Result<UiData, Strin
         })
         .collect();
 
-    let directives: Vec<Directive> = snapshot.entries().iter().map(|e| e.value.clone()).collect();
     let annee = aujourdhui.year();
     let mois = u8::try_from(aujourdhui.month()).unwrap_or(1);
-    let grille = BudgetGrid::build(&directives, &types, annee);
-    let mut budget_mois: Vec<BudgetVsReel> = grille
-        .rows
-        .iter()
-        .map(|ligne| BudgetVsReel {
-            compte: ligne.account.clone(),
-            budgete: ligne.cells[usize::from(mois) - 1].budgeted,
-            reel: ligne.cells[usize::from(mois) - 1].actual,
+    let mut budget_mois: Vec<BudgetVsReel> = grilles
+        .get(&annee)
+        .map(|grille| {
+            grille
+                .rows
+                .iter()
+                .map(|ligne| BudgetVsReel {
+                    compte: ligne.account.clone(),
+                    budgete: ligne.cells[usize::from(mois) - 1].budgeted,
+                    reel: ligne.cells[usize::from(mois) - 1].actual,
+                })
+                .collect()
         })
-        .collect();
+        .unwrap_or_default();
     // Sur-budget d'abord, puis écart croissant (les plus tendus en tête).
     budget_mois.sort_unstable_by(|a, b| {
         let depasse_a = a.reel > a.budgete;
@@ -241,6 +274,10 @@ pub fn build(snapshot: &Snapshot, aujourdhui: NaiveDate) -> Result<UiData, Strin
     });
 
     let courbe = courbe_patrimoine(snapshot, &types);
+    let budget_avertissements = grilles
+        .get(&annee)
+        .map(|grille| grille.warnings.clone())
+        .unwrap_or_default();
 
     Ok(UiData {
         main: snapshot.main.clone(),
@@ -253,7 +290,7 @@ pub fn build(snapshot: &Snapshot, aujourdhui: NaiveDate) -> Result<UiData, Strin
             patrimoine_net: patrimoine_net(&soldes, &types),
             budget_mois,
             budget_mois_label: format!("{annee}-{mois:02}"),
-            budget_avertissements: grille.warnings,
+            budget_avertissements,
             courbe,
         },
         journal: JournalData {
@@ -262,7 +299,44 @@ pub fn build(snapshot: &Snapshot, aujourdhui: NaiveDate) -> Result<UiData, Strin
         erreurs,
         comptes: comptes_du_plan(snapshot),
         payees: snapshot.payees(),
+        grilles,
+        directives_budget: directives_budget(&directives),
     })
+}
+
+/// Les directives `custom "budget"`, triées (date, compte) — base du diff
+/// de l'éditeur.
+fn directives_budget(directives: &[Directive]) -> Vec<DirectiveBudget> {
+    let mut out: Vec<DirectiveBudget> = directives
+        .iter()
+        .filter_map(|d| match d {
+            Directive::Custom(personnalisee) if personnalisee.custom_type == "budget" => {
+                let compte = personnalisee.values.first().and_then(|v| match v {
+                    rustledger_core::MetaValue::Account(compte) => {
+                        Some(compte.as_str().to_string())
+                    }
+                    _ => None,
+                })?;
+                let intervalle = personnalisee.values.get(1).and_then(|v| match v {
+                    rustledger_core::MetaValue::String(intervalle) => Some(intervalle.clone()),
+                    _ => None,
+                })?;
+                let montant = personnalisee.values.iter().find_map(|v| match v {
+                    rustledger_core::MetaValue::Amount(montant) => Some(montant.number),
+                    _ => None,
+                })?;
+                Some(DirectiveBudget {
+                    date: personnalisee.date,
+                    compte,
+                    intervalle,
+                    montant,
+                })
+            }
+            _ => None,
+        })
+        .collect();
+    out.sort_unstable_by(|a, b| a.date.cmp(&b.date).then_with(|| a.compte.cmp(&b.compte)));
+    out
 }
 
 /// Le plan de comptes : opens + closes joints (bornes d'existence).

@@ -15,22 +15,29 @@ use egui::RichText;
 use crate::viewmodel::UiData;
 use crate::worker::{Command, LoadOutcome};
 
-/// Les écrans de l'application (budgets → jalon 6, rapports → jalon 7).
+/// Les écrans de l'application (rapports → jalon 7).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Onglet {
     TableauDeBord,
     Journal,
     Saisie,
+    Budget,
 }
 
 impl Onglet {
-    const TOUS: [Onglet; 3] = [Onglet::TableauDeBord, Onglet::Journal, Onglet::Saisie];
+    const TOUS: [Onglet; 4] = [
+        Onglet::TableauDeBord,
+        Onglet::Journal,
+        Onglet::Saisie,
+        Onglet::Budget,
+    ];
 
     fn libelle(self) -> &'static str {
         match self {
             Self::TableauDeBord => "Tableau de bord",
             Self::Journal => "Journal",
             Self::Saisie => "Saisie",
+            Self::Budget => "Budget",
         }
     }
 }
@@ -58,6 +65,9 @@ pub struct FoyerApp {
     onglet: Onglet,
     journal: crate::views::journal::UiState,
     saisie: crate::views::saisie::UiState,
+    budget: crate::views::budget::UiState,
+    /// Préférences GUI (rollover par famille…) — TOML local, jamais le ledger.
+    config: crate::config::Config,
 }
 
 impl FoyerApp {
@@ -77,6 +87,8 @@ impl FoyerApp {
             onglet: Onglet::TableauDeBord,
             journal: crate::views::journal::UiState::new(),
             saisie: crate::views::saisie::UiState::nouveau(crate::worker::aujourd_hui()),
+            budget: crate::views::budget::UiState::nouveau(crate::worker::aujourd_hui().year()),
+            config: crate::config::Config::charger(),
         }
     }
 
@@ -255,6 +267,69 @@ impl eframe::App for FoyerApp {
                                 crate::worker::aujourd_hui(),
                             );
                             self.onglet = Onglet::Journal;
+                        }
+                        None => {}
+                    }
+                }
+                (Some(donnees), Onglet::Budget) => {
+                    let action = crate::views::budget::afficher(
+                        ui,
+                        donnees.grilles.get(&self.budget.annee),
+                        &mut self.budget,
+                        |famille| self.config.rollover_actif(famille),
+                    );
+                    match action {
+                        Some(crate::views::budget::ActionBudget::Cellule {
+                            annee,
+                            date,
+                            compte,
+                            montant,
+                        }) => {
+                            self.en_chargement = true;
+                            self.flash = None;
+                            self.cmd_tx
+                                .send(Command::CelluleBudget {
+                                    annee,
+                                    date,
+                                    compte,
+                                    montant,
+                                })
+                                .ok();
+                        }
+                        Some(crate::views::budget::ActionBudget::GenererAnnee {
+                            source,
+                            cible,
+                            pourcent,
+                            pas,
+                        }) => {
+                            self.en_chargement = true;
+                            self.flash = None;
+                            self.cmd_tx
+                                .send(Command::GenererAnnee {
+                                    source,
+                                    cible,
+                                    pourcent,
+                                    pas,
+                                })
+                                .ok();
+                        }
+                        Some(crate::views::budget::ActionBudget::BasculerRollover(famille)) => {
+                            match self.config.basculer_rollover(&famille) {
+                                Ok(()) => {
+                                    self.flash = Some((
+                                        format!(
+                                            "rollover {} — préférence enregistrée",
+                                            if self.config.rollover_actif(&famille) {
+                                                "activé"
+                                            } else {
+                                                "désactivé"
+                                            }
+                                        ),
+                                        false,
+                                    ));
+                                }
+                                Err(e) => self.flash = Some((e, true)),
+                            }
                         }
                         None => {}
                     }

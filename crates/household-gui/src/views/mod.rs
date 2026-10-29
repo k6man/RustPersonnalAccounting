@@ -3,6 +3,7 @@
 //! Les données viennent de `crate::viewmodel::UiData` (assemblées dans le
 //! worker) ; les vues lisent et dessinent.
 
+pub mod budget;
 pub mod dashboard;
 pub mod journal;
 pub mod saisie;

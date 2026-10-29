@@ -11,6 +11,8 @@
 //! Trait `eframe::App` 0.37 : `logic` (hors rendu) puis `ui` (Ui monté).
 
 pub mod app;
+pub mod budget;
+pub mod config;
 pub mod filters;
 pub mod fmt;
 pub mod saisie;

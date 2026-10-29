@@ -17,10 +17,14 @@ egui_extras.workspace = true
 egui_plot.workspace = true
 notify.workspace = true
 rustledger-core.workspace = true
+rustledger-budget.workspace = true
 household-core = { path = "../household-core" }
 household-budget = { path = "../household-budget" }
 rust_decimal.workspace = true
+rust_decimal_macros.workspace = true
 jiff.workspace = true
+serde.workspace = true
+toml.workspace = true
 
 [dev-dependencies]
 rust_decimal_macros.workspace = true

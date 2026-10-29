@@ -36,6 +36,22 @@ pub enum Command {
     },
     /// Supprimer une transaction existante.
     Supprimer { index: usize, empreinte: Empreinte },
+    /// Éditeur de budget : modifier la cellule (1ᵉʳ jour du mois, compte) —
+    /// remplacement chirurgical ou insertion de supersession.
+    CelluleBudget {
+        annee: i16,
+        date: NaiveDate,
+        compte: String,
+        montant: rust_decimal::Decimal,
+    },
+    /// Éditeur de budget : générer l'année cible par duplication de la
+    /// source (pour cent ±, arrondi au pas).
+    GenererAnnee {
+        source: i16,
+        cible: i16,
+        pourcent: rust_decimal::Decimal,
+        pas: rust_decimal::Decimal,
+    },
 }
 
 /// Réponses du worker vers l'UI.
@@ -99,6 +115,28 @@ pub fn demarrer(ctx: egui::Context, main: PathBuf) -> (Sender<Command>, Receiver
                 }
                 Command::Supprimer { index, empreinte } => {
                     out_tx.send(supprimer(&main, index, &empreinte)).ok();
+                    ctx.request_repaint();
+                }
+                Command::CelluleBudget {
+                    annee,
+                    date,
+                    compte,
+                    montant,
+                } => {
+                    out_tx
+                        .send(cellule_budget(&main, annee, date, &compte, montant))
+                        .ok();
+                    ctx.request_repaint();
+                }
+                Command::GenererAnnee {
+                    source,
+                    cible,
+                    pourcent,
+                    pas,
+                } => {
+                    out_tx
+                        .send(generer_annee(&main, source, cible, pourcent, pas))
+                        .ok();
                     ctx.request_repaint();
                 }
             }
@@ -235,6 +273,71 @@ pub fn localiser(
                 empreinte.date, empreinte.libelle
             )
         })
+}
+
+/// Édition d'une cellule budgétaire (writer chirurgical du jalon 3).
+fn cellule_budget(
+    main: &Path,
+    annee: i16,
+    date: NaiveDate,
+    compte: &str,
+    montant: rust_decimal::Decimal,
+) -> LoadOutcome {
+    let snapshot = match household_core::Snapshot::load(main) {
+        Ok(snapshot) => snapshot,
+        Err(e) => return LoadOutcome::Echec(e.to_string()),
+    };
+    match household_budget::writer::set_cell(&snapshot, annee, date, compte, montant) {
+        Ok(nouveau) => match donnees_fraiches(&nouveau) {
+            Ok(donnees) => LoadOutcome::Ecrit {
+                donnees,
+                message: format!("budget {compte} — {date} : {}", montant),
+            },
+            Err(e) => LoadOutcome::Echec(e),
+        },
+        Err(e) => LoadOutcome::Refuse(format!("budget refusé : {e}")),
+    }
+}
+
+/// Génération d'une année budgétaire : duplication ± % puis écriture
+/// (fichier + include, refus d'écrasement — jalon 3).
+fn generer_annee(
+    main: &Path,
+    source: i16,
+    cible: i16,
+    pourcent: rust_decimal::Decimal,
+    pas: rust_decimal::Decimal,
+) -> LoadOutcome {
+    let snapshot = match household_core::Snapshot::load(main) {
+        Ok(snapshot) => snapshot,
+        Err(e) => return LoadOutcome::Echec(e.to_string()),
+    };
+    let directives = household_budget::duplicate_year(
+        &snapshot
+            .entries()
+            .iter()
+            .map(|e| e.value.clone())
+            .collect::<Vec<_>>(),
+        source,
+        cible,
+        pourcent,
+        pas,
+    );
+    let dupliquees = match directives {
+        Ok(dupliquees) => dupliquees,
+        Err(e) => return LoadOutcome::Refuse(format!("génération refusée : {e}")),
+    };
+    let nombre_postes = dupliquees.len();
+    match household_budget::writer::write_year(&snapshot, cible, &dupliquees) {
+        Ok(nouveau) => match donnees_fraiches(&nouveau) {
+            Ok(donnees) => LoadOutcome::Ecrit {
+                donnees,
+                message: format!("année {cible} générée ({nombre_postes} postes)"),
+            },
+            Err(e) => LoadOutcome::Echec(e),
+        },
+        Err(e) => LoadOutcome::Refuse(format!("génération refusée : {e}")),
+    }
 }
 
 /// View-model sur le snapshot **frais** post-écriture. Le writer a déjà
