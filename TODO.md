@@ -11,15 +11,15 @@
 > - Mise à jour **à chaque jalon et à chaque tâche significative**, dans le **même commit** que le code concerné.
 > - Les tâches découvertes en cours de route sont ajoutées immédiatement, pas perdues.
 
-**État du projet** : jalons 1→3 terminés (jalon 3 : `household-budget`). Ledger d'exemple
-validé (`rledger check` ✓), fmt/clippy `-D warnings`/tests verts (27 tests : core 10 + budget 17).
-**Prochaine action : jalon 4** (`household-gui` lecture seule).
+**État du projet** : jalons 1→4 terminés (jalon 4 : GUI lecture seule). Ledger d'exemple
+validé (`rledger check` ✓), fmt/clippy `-D warnings`/tests verts (39 tests).
+**Prochaine action : jalon 5** (saisie et écriture de transactions).
 
 ---
 
 ## En cours
 
-_Néant — voir « À faire » (jalon 4)._
+_Néant — voir « À faire » (jalon 5)._
 
 ## À faire
 
@@ -162,16 +162,44 @@ crates ~/.cargo/registry/…-0.24.0 ; à revoir si épinglage un jour déplacé)
 
 ### Jalon 4 — GUI lecture seule (dashboard + journal)
 
-- [ ] Squelette `household-gui` eframe : `AppState` (snapshots `Arc`, pas de logique métier), enum
-  `Command` (Reload, SaveTransaction, …), **worker thread unique** de rechargement/validation,
-  canaux requête/réponse, `request_repaint` à réception ; écrans via onglets, libellés en français.
-- [ ] Rechargement au démarrage + **watcher `notify`** sur `/ledger` (débounced) → reload hors UI thread.
-- [ ] Écran **Tableau de bord** : soldes CC/LivretA/LDD, jauges de plafond (alerte ≥ 90 %, bloquant visuel
-  au dépassement), patrimoine net, carte budget vs réel du mois courant, courbe d'épargne (`egui_plot`).
-- [ ] Écran **Journal** : `egui_extras::TableWidget` paginé, filtres date/compte/montant/tag, recherche,
-  sélection → détail de l'écriture avec son origine fichier:ligne.
-- [ ] Affichage des erreurs de validation du ledger dans une bannière (codes `LedgerError`).
-- [ ] Commit jalon 4.
+- [x] Squelette `household-gui` eframe : crate **lib + bin** (`compta-foyer`, le lib expose
+  les modules aux tests d'intégration) ; `FoyerApp` (état GUI sans logique métier), enum
+  `Command { Reload }`, **worker thread unique** (canaux `mpsc` requête/réponse,
+  `ctx.request_repaint()` à réception), `logic()` draine les résultats hors rendu ; onglets
+  Tableau de bord / Journal, libellés français.
+- [x] Rechargement au démarrage + **watcher `notify`** (8.2 : `recommended_watcher` + trait
+  `Watcher` en import) sur le répertoire du ledger, récursif ; **debounce côté worker**
+  (drain + 250 ms + drain) pour écrêter les rafales d'événements.
+- [x] Écran **Tableau de bord** : soldes CC/LivretA/LDD, jauges de plafond (ÉtatJauge
+  Ok < 90 % / Alerte ≥ 90 % / Dépassement > 100 %, cadre rouge bloquant), patrimoine net,
+  carte budget vs réel du mois courant (8 postes les plus tendus, sur-budget en tête),
+  courbe du patrimoine par fin de mois (`egui_plot`, X = index de mois avec libellés).
+- [x] Écran **Journal** : `egui_extras::TableBuilder` (colonnes date/!/tiers/libellé/comptes/
+  montant/tags), filtres texte/compte-préfixe/tag/dates/montants (parsing tolérant, dates
+  invalides signalées), pagination 100/page bornée, sélection → détail (postings avec
+  équilibrages, tags/liens, **origine fichier:ligne:entrée**), bouton Réinitialiser.
+- [x] Bannière d'erreurs de validation (codes `LedgerError` + fichier:ligne, 5 premières + total)
+  et bannière d'échec de chargement (l'état précédent reste affiché).
+- [x] Commit jalon 4.
+
+**Découvertes du jalon 4** :
+- **egui 0.37** : `TopBottomPanel`/`SidePanel` unifiés en `egui::Panel` (+ `Panel::top/bottom`),
+  `CentralPanel::show(ui)` prend directement le `Ui` monté (`show_inside` déprécié) ;
+  `ProgressBar::new(f32)` ; pas de `Ui::colored_text` → `RichText::color()` ; `Label` sans
+  `weak/strong` (passer par `WidgetText`) ; egui_plot 0.38 : `Line::new(nom, points)` +
+  `Plot::x_axis_formatter(|GridMark, plage| String)` ; Decimal n'implémente **pas** `From<f64>`
+  (par design) → `Decimal::try_from` dans les formateurs.
+- **Patrimoine net = Σ Assets − Σ Liabilities, Equity exclu** : `Equity:Soldes-Ouverture`
+  porte le capital historique et s'annulerait avec les assets d'ouverture (testé :
+  36 946,87 € et non 5 780,97 €). À consigner dans l'ADR (jalon 7).
+- Le view-model est **croisé avec `rledger report budget`** (Courses mars : 309,85 € identique)
+  — le cumul `balances` (833,05) n'est PAS le réel du mois.
+- `rledger` exige un `default.file` : ajout de `.rledger.toml` projet (`ledger/main.beancount`)
+  pour que `rledger report budget` marche sans argument.
+- Le crate GUI a une cible **lib** (`src/lib.rs`) + bin : les tests d'intégration ne peuvent pas
+  lier un binaire pur.
+- Tests parallèles : répertoires scratch suffixés d'un compteur atomique (l'horloge macOS ne
+  suffit pas) — déjà rencontré au jalon 3, appliqué aussi ici.
 
 ### Jalon 5 — Saisie et écriture de transactions
 
@@ -235,6 +263,11 @@ crates ~/.cargo/registry/…-0.24.0 ; à revoir si épinglage un jour déplacé)
   seul, round-trip identique, multi-fichiers pour nouvelle année + include) ; 27 tests verts
   au total (core 10 + budget 17), bug de régression corrigé
   (span parseur avale les commentaires de queue ; texte avant le bloc perdu).
+- [x] **Jalon 4 — GUI lecture seule (2026‑10‑29)** : worker + watcher notify (debounce),
+  tableau de bord (soldes, jauges de plafond à 3 états, patrimoine net Equity exclu, budget vs
+  réel, courbe egui_plot), journal filtrable/paginé avec détail fichier:ligne, bannières
+  d'erreurs ; crate lib+bin ; 12 tests GUI (6 unitaires filtres/fmt + 6 view-model croisés
+  avec rledger) — total 39 tests verts. Découvertes egui 0.37 ci‑dessus.
 
 ### Reconnaissance — capacités vérifiées de rustledger 0.24.0 (publié 2026‑09‑06)
 
