@@ -180,3 +180,46 @@ fn index_of(snapshot: &Snapshot, date: NaiveDate) -> Option<usize> {
         })
         .map(|(i, _)| i)
 }
+
+#[test]
+fn suppression_preserve_commentaires_et_autres_blocs() {
+    // Régression : le span parseur d'une directive s'étend jusqu'à la
+    // suivante (commentaires de queue compris) et l'édition ne doit ni
+    // perdre le texte AVANT le bloc, ni les commentaires APRÈS lui.
+    let main = ledger_copy();
+    let scratch = main.parent().unwrap().parent().unwrap().to_path_buf();
+
+    let file = monthly_file(&main, "2026-04-01".parse().unwrap());
+    std::fs::create_dir_all(file.parent().unwrap()).expect("répertoire avril");
+    std::fs::write(
+        &file,
+        concat!(
+            "# Transactions 2026-04 — test.\n",
+            "\n",
+            "2026-04-05 * \"Courses A\"\n",
+            "  Expenses:Alimentation:Restaurants   10.00 EUR\n",
+            "  Assets:Banque:CompteCourant        -10.00 EUR\n",
+            "\n",
+            "# entre les deux\n",
+            "\n",
+            "2026-04-10 * \"Courses B\"\n",
+            "  Expenses:Alimentation:Restaurants    5.00 EUR\n",
+            "  Assets:Banque:CompteCourant         -5.00 EUR\n",
+            "\n",
+        ),
+    )
+    .expect("fabrication du fichier");
+
+    let snapshot = Snapshot::load(&main).expect("ledger avec fichier fabriqué");
+    let index = index_of(&snapshot, "2026-04-10".parse().unwrap()).expect("index de B");
+    let after = remove_transaction(&snapshot, index).expect("suppression B");
+    assert!(after.is_valid(), "{:?}", after.errors());
+
+    let text = std::fs::read_to_string(&file).expect("relecture");
+    assert!(text.contains("# Transactions 2026-04"), "en-tête intact");
+    assert!(text.contains("Courses A"), "bloc précédent intact");
+    assert!(text.contains("# entre les deux"), "commentaire intact");
+    assert!(!text.contains("Courses B"), "bloc supprimé");
+
+    common::cleanup(&scratch);
+}

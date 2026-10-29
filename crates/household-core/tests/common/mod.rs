@@ -44,11 +44,19 @@ fn copy_inner(src: &Path, dst: &Path) -> std::io::Result<()> {
 }
 
 fn temp_root() -> PathBuf {
+    // Compteur atomique : les tests tournent en parallèle dans le même
+    // processus et l'horloge murale (résolution ~µs sur macOS) ne suffit pas
+    // à distinguer deux appels simultanés.
+    static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let seq = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_nanos())
         .unwrap_or_default();
-    std::env::temp_dir().join(format!("household-tests-{}-{nanos}", std::process::id()))
+    std::env::temp_dir().join(format!(
+        "household-tests-{}-{nanos}-{seq}",
+        std::process::id()
+    ))
 }
 
 /// Le contenu d'un fichier mensuel (helper d'assertions).

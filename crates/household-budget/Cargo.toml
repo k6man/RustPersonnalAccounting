@@ -9,9 +9,13 @@ rust-version.workspace = true
 [dependencies]
 rustledger-core.workspace = true
 rustledger-budget.workspace = true
+household-core.workspace = true
 rust_decimal.workspace = true
 jiff.workspace = true
 thiserror.workspace = true
+
+[dev-dependencies]
+rust_decimal_macros.workspace = true
 
 [lints]
 workspace = true

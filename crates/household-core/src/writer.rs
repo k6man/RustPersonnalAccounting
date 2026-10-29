@@ -114,10 +114,66 @@ pub fn remove_transaction(snapshot: &Snapshot, index: usize) -> Result<Snapshot,
 
 /// Texte canonique d'une transaction (bloc autonome, sans newline final).
 pub fn canonical_block(txn: &Transaction) -> String {
-    format_directives(
-        [Directive::Transaction(txn.clone())].iter(),
-        &write_config(),
-    )
+    canonical_directive_block(&Directive::Transaction(txn.clone()))
+}
+
+/// Texte canonique de n'importe quelle directive simple (une `custom "budget"`
+/// par exemple) — bloc autonome d'une ligne pour `open`/`balance`/`custom`.
+pub fn canonical_directive_block(directive: &Directive) -> String {
+    format_directives([directive.clone()].iter(), &write_config())
+}
+
+/// Édition générique d'un fichier du ledger, avec **toutes** les garanties du
+/// writer (verrou, pré-vérification scratch, atomique, revalidation) : `patch`
+/// reçoit le contenu actuel et renvoie le nouveau (`Ok(None)` = refus).
+/// C'est le point d'extension des writers spécialisés (budgets au jalon 3).
+pub fn edit_ledger_file(
+    main: &Path,
+    target: PathBuf,
+    patch: impl FnOnce(&str) -> Result<Option<String>, CoreError>,
+) -> Result<Snapshot, CoreError> {
+    mutate(main, target, patch)
+}
+
+/// Remplace le bloc couvert par `span` (édition chirurgicale hors writer) :
+/// `f` reçoit (début du bloc, corps, suite) et renvoie le nouveau texte de
+/// `corps + suite`. Public pour les writers spécialisés.
+pub fn rewrite_span_block(
+    old: &str,
+    span: rustledger_parser::Span,
+    f: impl FnOnce(usize, &str, &str) -> String,
+) -> String {
+    rewrite_span(old, 0, span, f)
+}
+
+/// Insère `block` (texte déjà canonique) dans `old` avant la première ligne
+/// datée ISO strictement supérieure à `iso` ; `header` sert si le fichier est
+/// vide ou absent. Public pour les writers spécialisés (budgets).
+pub fn insert_sorted(old: &str, block: &str, iso: &str, header: Option<&str>) -> String {
+    if old.trim().is_empty() {
+        let mut out = header.unwrap_or("").to_string();
+        if !out.is_empty() && !out.ends_with("\n\n") {
+            out.push('\n');
+        }
+        out.push_str(block);
+        out.push('\n');
+        return out;
+    }
+
+    let pos = find_insertion_byte(old, iso);
+    let before = &old[..pos];
+    let (lead, trail) = if before.is_empty() {
+        (String::new(), "\n")
+    } else {
+        let k = before.bytes().rev().take_while(|&b| b == b'\n').count();
+        let lead = match k {
+            0 => "\n\n".to_string(),
+            1 => "\n".to_string(),
+            _ => String::new(),
+        };
+        (lead, "\n\n")
+    };
+    format!("{before}{lead}{block}{trail}{rest}", rest = &old[pos..],)
 }
 
 fn write_config() -> FormatConfig {
@@ -134,33 +190,11 @@ fn ioutil_header(date: NaiveDate) -> String {
 /// Insère le bloc canonique avant la première ligne-caractère de date >
 /// strictement supérieure à la date de la transaction (ordre stable).
 fn insert_block(old: &str, txn: &Transaction, header: String) -> String {
-    if old.trim().is_empty() {
-        let mut out = header;
-        if !out.ends_with("\n\n") {
-            out.push('\n');
-        }
-        out.push_str(&canonical_block(txn));
-        out.push('\n');
-        return out;
-    }
-
-    let pos = find_insertion_byte(old, &txn.date.to_string());
-    let before = &old[..pos];
-    let (lead, trail) = if before.is_empty() {
-        (String::new(), "\n")
-    } else {
-        let k = before.bytes().rev().take_while(|&b| b == b'\n').count();
-        let lead = match k {
-            0 => "\n\n".to_string(),
-            1 => "\n".to_string(),
-            _ => String::new(),
-        };
-        (lead, "\n\n")
-    };
-    format!(
-        "{before}{lead}{}{trail}{rest}",
-        canonical_block(txn),
-        rest = &old[pos..],
+    insert_sorted(
+        old,
+        &canonical_block(txn),
+        &txn.date.to_string(),
+        Some(&header),
     )
 }
 
@@ -211,33 +245,61 @@ fn line_iso(line: &[u8]) -> Option<&str> {
 
 // ------------------------------------------------------------ span rewrite ---
 
+/// Découpe `old` au **bloc logique** d'une directive : (avant, corps avec son
+/// newline final, suite).
+///
+/// Le span du parseur s'étend du début de la directive **au début de la
+/// suivante** (parité beancount : il avale les lignes vides et commentaires
+/// de queue). Le corps est donc recalé ici sur la directive elle-même :
+/// première ligne + lignes indentées (postings, métadonnées), en s'arrêtant
+/// à une ligne vide, un commentaire (`#`/`;`) ou une nouvelle directive.
+/// Les commentaires de queue restent dans la suite — jamais perdus.
+pub fn split_directive_block(old: &str, span: rustledger_parser::Span) -> (usize, &str, &str) {
+    let bytes = old.as_bytes();
+    let start = span.start.min(bytes.len());
+    let first_nl = old[start..]
+        .find('\n')
+        .map_or(bytes.len(), |i| start + i + 1);
+    let mut end = first_nl;
+
+    // Continuations : lignes indentées non vides qui ne sont pas des
+    // commentaires autonomes.
+    let mut cursor = end;
+    while cursor < bytes.len() {
+        let line_end = old[cursor..]
+            .find('\n')
+            .map_or(bytes.len(), |i| cursor + i + 1);
+        let line = old[cursor..line_end].trim_end();
+        if line.is_empty() {
+            break;
+        }
+        let stripped = line.trim_start();
+        let first = stripped.as_bytes()[0];
+        if first == b'#' || first == b';' {
+            break; // commentaire autonome → hors bloc
+        }
+        if !line.starts_with([' ', '\t']) {
+            break; // nouvelle directive (colonne 0)
+        }
+        end = line_end;
+        cursor = line_end;
+    }
+
+    (start, &old[start..end], &old[end..])
+}
+
 /// Remplace un bloc de directive défini par son `span` d'octets : `f` reçoit
-/// (avant du bloc, bloc entier?, après) ; on construit le nouveau contenu
-/// du fichier (fichier réel, span de la copie scratch identique).
-#[allow(clippy::needless_pass_by_value)]
+/// (début du bloc, corps logique, suite) et renvoie le nouveau texte de
+/// `corps + suite` ; le texte **avant** le bloc est conservé tel quel.
 fn rewrite_span(
     old: &str,
     _file_id: usize,
     span: rustledger_parser::Span,
     f: impl FnOnce(usize, &str, &str) -> String,
 ) -> String {
-    let bytes = old.as_bytes();
-    // Début : la directive commence au début de sa ligne.
-    let start = bytes[..span.start.min(bytes.len())]
-        .iter()
-        .rposition(|&b| b == b'\n')
-        .map_or(0, |i| i + 1);
-    // Fin : le span couvre la directive ; on avale son newline final.
-    let mut end = span.end.min(bytes.len());
-    if end < bytes.len() && bytes[end] == b'\n' {
-        end += 1;
-    }
-    // (Le texte avant le bloc est conservé tel quel par construction :
-    // `f` ne reçoit que le corps et la suite.)
-    let body = &old[start..end];
-    let after = &old[end..];
+    let (start, body, after) = split_directive_block(old, span);
     let result = f(start, body, after);
-    collapse_blank_runs(&result)
+    collapse_blank_runs(&format!("{}{result}", &old[..start]))
 }
 
 /// Réduit les triplets+ de lignes vides à une seule ligne vide (post-removal).
@@ -251,33 +313,54 @@ fn collapse_blank_runs(text: &str) -> String {
 
 // ------------------------------------------------------------ mutation core ---
 
-/// Applique une mutation sur un fichier du ledger, *avec garantie* :
-/// verrou → prévérification sur copie scratch → écriture atomique →
-/// revalidation du ledger réel. Le nouveau [`Snapshot`] est retourné.
-///
-/// `patch` reçoit le contenu actuel du fichier cible ("" si absent) et
-/// renvoie le nouveau contenu, ou `Ok(None)` pour demander un refus.
-fn mutate(
-    main: &Path,
-    target: PathBuf,
-    patch: impl FnOnce(&str) -> Result<Option<String>, CoreError>,
-) -> Result<Snapshot, CoreError> {
+/// Patch d'un fichier : contenu actuel → nouveau contenu (`Ok(None)` = refus).
+pub type PatchFn<'a> = Box<dyn FnOnce(&str) -> Result<Option<String>, CoreError> + 'a>;
+
+/// Un changement de fichier du ledger : cible + patch.
+pub struct FileChange<'a> {
+    pub target: PathBuf,
+    pub patch: PatchFn<'a>,
+}
+
+impl<'a> FileChange<'a> {
+    pub fn new(
+        target: PathBuf,
+        patch: impl FnOnce(&str) -> Result<Option<String>, CoreError> + 'a,
+    ) -> Self {
+        Self {
+            target,
+            patch: Box::new(patch),
+        }
+    }
+}
+
+/// Applique une mutation sur **plusieurs** fichiers du ledger d'un seul coup,
+/// *avec garantie* : verrou → pré-vérification sur copie scratch (toutes les
+/// mutations jouées ensemble) → écritures atomiques → revalidation du ledger
+/// réel. Atomicité logique : si un fichier échoue, rien n'est écrit.
+pub fn edit_ledger_files(main: &Path, changes: Vec<FileChange<'_>>) -> Result<Snapshot, CoreError> {
     with_ledger_lock(main, || {
-        let current = match fs::read_to_string(&target) {
-            Ok(text) => text,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
-            Err(e) => return Err(CoreError::Io(e)),
-        };
-        let Some(new_content) = patch(&current)? else {
-            return Err(CoreError::Writer("aucun changement à écrire".to_string()));
-        };
+        let mut updated: Vec<(PathBuf, String)> = Vec::with_capacity(changes.len());
+        for change in changes {
+            let current = match fs::read_to_string(&change.target) {
+                Ok(text) => text,
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
+                Err(e) => return Err(CoreError::Io(e)),
+            };
+            let Some(new_content) = (change.patch)(&current)? else {
+                return Err(CoreError::Writer("aucun changement à écrire".to_string()));
+            };
+            updated.push((change.target, new_content));
+        }
 
         // 1. Pré-vérification sur copie scratch : l'écriture ne se joue que
-        //    si le ledger est valide *avec* la mutation.
-        precheck_with(main, &target, new_content.as_bytes())?;
+        //    si le ledger est valide *avec* toutes les mutations.
+        precheck_with(main, &updated)?;
 
-        // 2. Écriture réelle, atomique (temporaire + rename).
-        atomic_write(&target, new_content.as_bytes())?;
+        // 2. Écritures réelles, atomiques (temporaire + rename).
+        for (target, content) in &updated {
+            atomic_write(target, content.as_bytes())?;
+        }
 
         // 3. Revalidation réelle et état frais.
         let replay = Snapshot::load(main)?;
@@ -289,6 +372,15 @@ fn mutate(
         }
         Ok(replay)
     })
+}
+
+/// Applique une mutation sur un seul fichier (cas le plus courant).
+fn mutate(
+    main: &Path,
+    target: PathBuf,
+    patch: impl FnOnce(&str) -> Result<Option<String>, CoreError>,
+) -> Result<Snapshot, CoreError> {
+    edit_ledger_files(main, vec![FileChange::new(target, patch)])
 }
 
 /// Canonisation robuste : fichier existant → canonisé ; sinon → parent
@@ -307,13 +399,13 @@ fn canonize(path: &Path) -> PathBuf {
 }
 
 /// Pré-vérification : copie du répertoire ledger dans un scratch, application
-/// du patch sur la copie, chargement complet → `Ok(())` seulement si zéro erreur.
-fn precheck_with(main: &Path, target: &Path, new_content: &[u8]) -> Result<(), CoreError> {
+/// de **tous** les changements sur la copie, chargement complet → `Ok(())`
+/// seulement si zéro erreur.
+fn precheck_with(main: &Path, updated: &[(PathBuf, String)]) -> Result<(), CoreError> {
     // Canonisation (macOS : /var est un symlink vers /private/var, le loader
     // peut stocker les chemins canoniques) — sans canonisation, strip_prefix
     // échoue sur des chemins équivalents écrits différemment.
     let main = main.canonicalize().unwrap_or_else(|_| main.to_path_buf());
-    let target = canonize(target);
     let root = main
         .parent()
         .unwrap_or_else(|| Path::new("."))
@@ -322,17 +414,20 @@ fn precheck_with(main: &Path, target: &Path, new_content: &[u8]) -> Result<(), C
     fs::create_dir_all(&scratch)?;
     let outcome = (|| -> Result<(), CoreError> {
         copy_tree(&root, &scratch.join("ledger"))?;
-        let rel = target
-            .strip_prefix(root)
-            .map_err(|e| CoreError::Writer(format!("cible hors ledger : {e}")))?;
-        let scratch_target = scratch.join("ledger").join(rel);
-        if let Some(parent) = scratch_target.parent() {
-            fs::create_dir_all(parent)?;
-        }
-        if new_content.is_empty() {
-            let _ = fs::remove_file(&scratch_target);
-        } else {
-            fs::write(&scratch_target, new_content)?;
+        for (target, content) in updated {
+            let target = canonize(target);
+            let rel = target
+                .strip_prefix(&root)
+                .map_err(|e| CoreError::Writer(format!("cible hors ledger : {e}")))?;
+            let scratch_target = scratch.join("ledger").join(rel);
+            if let Some(parent) = scratch_target.parent() {
+                fs::create_dir_all(parent)?;
+            }
+            if content.is_empty() {
+                let _ = fs::remove_file(&scratch_target);
+            } else {
+                fs::write(&scratch_target, content)?;
+            }
         }
         let copy_main = scratch.join("ledger").join(
             main.file_name()

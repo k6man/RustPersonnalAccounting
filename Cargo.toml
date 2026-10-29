@@ -29,6 +29,9 @@ rustledger-booking = "=0.24.0"
 rustledger-validate = "=0.24.0"
 rustledger-budget = "=0.24.0"
 
+# Crates du foyer (dépendances internes, même version).
+household-core = { path = "crates/household-core" }
+
 # Types de domaine — réutilisés tels quels (aucune conversion aux frontières).
 rust_decimal = "1.43"
 rust_decimal_macros = "1.40"

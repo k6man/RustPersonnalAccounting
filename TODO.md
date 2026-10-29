@@ -11,15 +11,15 @@
 > - Mise à jour **à chaque jalon et à chaque tâche significative**, dans le **même commit** que le code concerné.
 > - Les tâches découvertes en cours de route sont ajoutées immédiatement, pas perdues.
 
-**État du projet** : jalons 1 et 2 terminés (`30cc0ab`, jalon 2 ci‑dessous). Ledger d'exemple
-validé (`rledger check` ✓), formats/clippy/tests verts (9 tests household-core).
-**Prochaine action : jalon 3** (`household-budget`).
+**État du projet** : jalons 1→3 terminés (jalon 3 : `household-budget`). Ledger d'exemple
+validé (`rledger check` ✓), fmt/clippy `-D warnings`/tests verts (27 tests : core 10 + budget 17).
+**Prochaine action : jalon 4** (`household-gui` lecture seule).
 
 ---
 
 ## En cours
 
-_Néant — voir « À faire » (jalon 3)._
+_Néant — voir « À faire » (jalon 4)._
 
 ## À faire
 
@@ -109,25 +109,56 @@ crates ~/.cargo/registry/…-0.24.0 ; à revoir si épinglage un jour déplacé)
 
 ### Jalon 3 — household-budget : logique budgétaire pure
 
-- [ ] Modèle : `BudgetGrid { year, postes × 12 mois }`, construit à partir de
-  `rustledger_budget::Budgets::from_directives(&ledger.directives)` et du calcul des réels par
-  fenêtre mensuelle (`compare(directives, types, from, to, children, filter)` par mois).
-- [ ] Lignes : budget mensualisé, réel, écart, % consommé (via `BudgetRow::remaining/used_fraction`) ;
-  totaux par ligne (année), par colonne (mois), par groupe hiérarchique (`children = true`).
-- [ ] **Rollover** (option, calcul maison non fourni par rustledger) : report du non‑dépensé/cumulé
-  mois → mois suivant ; sémantique « cumul annuel (+ report) vs réel cumulé » verrouillée par tests.
-- [ ] Remise à zéro : gestion des directives `0.00 EUR` (la grille doit les écrire, pas les supprimer).
-- [ ] **Duplication d'année** N→N+1 : copie des directives avec application optionnelle d'un pourcentage,
-  arrondi aux centimes supérieurs multiples « ronds » paramétrable ; sortie = liste de lignes canoniques.
-- [ ] Writer budget chirurgical : une directive = une ligne dans `budgets/AAAA.beancount`, tri
-  (date, compte), mise à jour d'une cellule = édition d'une seule ligne (ou insertion), **préservation
-  des commentaires** ; écriture atomique.
-- [ ] Avertissements : parsing via `rustledger_budget::BudgetError` remonté typé (currency mismatch, etc.).
-- [ ] Tests unitaires : février bissextile (dénominateur 28/29), supersession en cours de mois
-  (split d'interval), budget mensuel vs directive datée en milieu de mois, rollover cumulé,
-  groupement parent+enfants (addition, pas absorption), duplication ±% idempotente, golden file
-  budgets/2026.beancount (round‑trip lecture→écriture = contenu identique).
-- [ ] Commit jalon 3.
+- [x] Modèle : `BudgetGrid::build(directives, types, year)` — grille postes × 12 mois construite
+  sur `rustledger_budget::Budgets::from_directives` + un appel `compare(directives, types,
+  [1er mois, 1er suivant), children=true)` **par mois** (accrual Fava : pro‑rata par jour,
+  ancrage calendaire, supersession).
+- [x] Lignes : `GridCell { budgeted, actual }` + `remaining()`/`used_fraction()` ; `GridRow`
+  (totaux année) ; totaux par colonne via `Comparison.totals` (chaque budget/poste compté une
+  fois — jamais la somme des lignes, qui double‑compte les enfants) ; diagnostics
+  `BudgetError` dédupliqués sur l'année dans `warnings` (libellés de catégorie = vocabulaire
+  filaire `as_str()` — `Bucket::label` produit un libellé de ligne TOTAL, pas un nom de type).
+- [x] **Rollover** (`rollover.rs`) : `RolloverSeries::from_cells(cells, initial)` —
+  `disponible(m) = report_initial + Σ budget − Σ réel`, report **négatif autorisé** (choix
+  « cumul », le dérapage reste visible), `carry_out()` = report sortant. Sémantique verrouillée
+  par tests.
+- [x] Remise à zéro : les directives `0.00 EUR` restent des cellules budgétées à 0 (la grille
+  les écrit, ne les supprime pas) — testé via le ledger réel (Vacances).
+- [x] **Duplication d'année** (`duplicate.rs`) : N→N+1 avec pour cent (±), arrondi **au multiple
+  supérieur** d'un pas paramétrable (`0.01` centimes, `1.00` euros, `5.00`…), remise à l'échelle
+  monétaire 2 décimales ; sortie = directives canoniques triées (date, compte) ; refus : pas ≤ 0,
+  année source vide, **année cible déjà budgétée** ; 0 % = idempotent (testé).
+- [x] Writer budget chirurgical (`writer.rs`) : `set_cell` remplace **le seul token montant** de
+  la ligne (octets ailleurs préservés — alignement compris ; round‑trip à valeur égale =
+  fichier identique, testé) ; directive absente → insertion triée (date, compte) ; nouvelle
+  année → création `budgets/AAAA.beancount` + include dans `main` **en une seule mutation
+  multi‑fichiers** (`household_core::writer::edit_ledger_files`) ; `write_year` refuse
+  d'écraser un fichier existant. Garanties héritées : verrou, pré‑vérification scratch,
+  atomicité, revalidation.
+- [x] Avertissements : `Comparison.errors` (`BudgetError { date, account, reason }`) remontés
+  dédupliqués dans `BudgetGrid.warnings`.
+- [x] Tests budget (17 verts) : février bissextile (daily 28 vs 29), supersession en cours de
+  mois (split pro‑rata avril 10/20 jours = 230.00 exact), directive datée en milieu de mois
+  (200.00), réel/fraction, parent+enfants (addition, pas absorption), rollover cumulé ±,
+  duplication 0 % idempotente / +6 % pas 1 € et pas centime / refus d'écrasement, bornes de
+  fenêtres ; writer : round‑trip identique, une‑seule‑ligne‑changée + grille suit, insertion
+  triée avec supersession, génération 2027 (fichier + include + grille), refus d'écrasement.
+- [x] Commit jalon 3.
+
+**Découvertes du jalon 3** (source de vérité : crates 0.24.0 publiés) :
+- **Span parseur** : la span d'une directive s'étend du début de la directive **au début de la
+  suivante** (parité beancount) — elle avale lignes vides et commentaires de queue. Toute
+  édition chirurgicale doit recaler le **bloc logique** : `household_core::writer::
+  split_directive_block` (1ʳᵉ ligne + lignes indentées non‑commentaires).
+- **Bug corrigé au passage (régression jalon 2)** : `rewrite_span` perdait le texte **avant** le
+  bloc (introduit en supprimant un warning clippy) ; les tests de l'époque ne l'avaient pas
+  attrapé (fichiers mono‑bloc). Ajout du test `suppression_preserve_commentaires_et_autres_blocs`.
+- `Bucket::label` = libellé de ligne de total (« TOTAL », « TOTAL (Assets) ») ; pour un nom de
+  catégorie, utiliser `AccountTypeKind::as_str()` (vocabulaire filaire).
+- Budget mensuel Fava : en force **tous les mois suivants** jusqu'à supersession (décembre
+  budgété même sans écriture) ; le réel ne compte qu'à partir du début d'effet.
+- Les tests parallèles d'un même processus partagent l'horloge murale (résolution ~µs macOS) :
+  répertoires scratch suffixés par un compteur atomique, sinon collisions/nettoyages croisés.
 
 ### Jalon 4 — GUI lecture seule (dashboard + journal)
 
@@ -196,8 +227,14 @@ crates ~/.cargo/registry/…-0.24.0 ; à revoir si épinglage un jour déplacé)
 - [x] **Jalon 2 — household-core : lecture et écriture du ledger (2026‑10‑29)** : `Snapshot`
   (chargement complet + requêtes) + writer transactionnel (append/replace/remove canoniques,
   scratch + pré-vérification + atomicité + verrou) + binaire `household-cli` branché hook/justfile ;
-  9 tests (golden 4 + writer 4 + unitaire 1) verts, clippy `-D warnings` vert, ledger revalidé
+  10 tests verts (golden 4 + writer 5 + unitaire 1), clippy `-D warnings` vert, ledger revalidé
   par `rledger check`. Détails et écarts d'API 0.24.0 dans la checklist archivée du jalon (ci‑dessus).
+- [x] **Jalon 3 — household-budget : logique budgétaire pure (2026‑10‑29)** : grille postes × 12
+  mois (compare mensuel, children), rollover cumulé (report négatif autorisé), duplication
+  d'année ±% avec arrondi au multiple supérieur paramétrable, writer chirurgical (token montant
+  seul, round-trip identique, multi-fichiers pour nouvelle année + include) ; 27 tests verts
+  au total (core 10 + budget 17), bug de régression corrigé
+  (span parseur avale les commentaires de queue ; texte avant le bloc perdu).
 
 ### Reconnaissance — capacités vérifiées de rustledger 0.24.0 (publié 2026‑09‑06)
 
