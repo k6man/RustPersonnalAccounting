@@ -34,6 +34,56 @@ pub struct UiData {
     /// Directives `custom "budget"` du ledger, triées — base du diff et du
     /// sélecteur d'années.
     pub directives_budget: Vec<DirectiveBudget>,
+    /// Données de l'écran Rapports (année courante + N−1 pour comparaison).
+    pub rapports: RapportsData,
+}
+
+/// Données de l'écran **Rapports**, calculées une fois par chargement :
+/// agrégats par mois dans l'année, en `Decimal` (conversion `f64` réservée
+/// au tracé egui_plot, jamais stockée).
+#[derive(Debug, Clone, Default)]
+pub struct RapportsData {
+    /// Année affichée (l'année courante).
+    pub annee: i16,
+    /// Dépenses par catégorie (2 premiers segments) × 12 mois (0-based).
+    pub depenses_categories: BTreeMap<String, [Decimal; 12]>,
+    /// Dépenses totales par mois.
+    pub depenses_mois: [Decimal; 12],
+    /// Dépenses totales de l'année précédente (comparaison N vs N−1),
+    /// `None` si aucune transaction cette année-là.
+    pub depenses_annee_precedente: Option<[Decimal; 12]>,
+    /// Revenus totaux par mois.
+    pub revenus_mois: [Decimal; 12],
+    /// Variation nette de l'épargne par mois (transferts + intérêts, signés).
+    pub epargne_mois: [Decimal; 12],
+}
+
+impl RapportsData {
+    /// Dépenses totales de l'année affichée.
+    #[must_use]
+    pub fn depenses_annee(&self) -> Decimal {
+        self.depenses_mois.iter().copied().sum()
+    }
+
+    /// Revenus totaux de l'année affichée.
+    #[must_use]
+    pub fn revenus_annee(&self) -> Decimal {
+        self.revenus_mois.iter().copied().sum()
+    }
+
+    /// Variation nette de l'épargne sur l'année.
+    #[must_use]
+    pub fn epargne_annee(&self) -> Decimal {
+        self.epargne_mois.iter().copied().sum()
+    }
+
+    /// Taux d'épargne de l'année (variation nette / revenus), `None` si
+    /// aucun revenu n'est enregistré.
+    #[must_use]
+    pub fn taux_epargne(&self) -> Option<Decimal> {
+        let revenus = self.revenus_annee();
+        (!revenus.is_zero()).then(|| self.epargne_annee() / revenus)
+    }
 }
 
 /// Une directive `custom "budget"` telle qu'écrite dans le ledger.
@@ -274,6 +324,10 @@ pub fn build(snapshot: &Snapshot, aujourdhui: NaiveDate) -> Result<UiData, Strin
     });
 
     let courbe = courbe_patrimoine(snapshot, &types);
+
+    // Rapports : année courante + comparaison N−1.
+    let annee_courante = aujourdhui.year();
+    let rapports = rapports(&directives, &types, annee_courante);
     let budget_avertissements = grilles
         .get(&annee)
         .map(|grille| grille.warnings.clone())
@@ -301,7 +355,103 @@ pub fn build(snapshot: &Snapshot, aujourdhui: NaiveDate) -> Result<UiData, Strin
         payees: snapshot.payees(),
         grilles,
         directives_budget: directives_budget(&directives),
+        rapports,
     })
+}
+
+/// Catégorie d'agrégation d'un compte : ses 2 premiers segments
+/// (`Expenses:Enfants`), ou le compte entier s'il en a moins.
+fn categorie_de(compte: &str) -> String {
+    let segments: Vec<&str> = compte.split(':').collect();
+    if segments.len() >= 3 {
+        segments[..2].join(":")
+    } else {
+        compte.to_string()
+    }
+}
+
+/// Agrégats de l'écran Rapports pour une année : parcours des transactions,
+/// classifications par préfixe (dépenses / revenus / variation d'épargne),
+/// EUR seulement.
+///
+/// Conventions du projet : épargne = comptes `Assets:Epargne:*` (variations
+/// signées — transferts ET intérêts) ; dépense/revenu = valeur absolue des
+/// postings `Expenses:*` / `Income:*`.
+#[must_use]
+pub fn rapports(directives: &[Directive], types: &AccountTypes, annee: i16) -> RapportsData {
+    let mut out = RapportsData {
+        annee,
+        ..RapportsData::default()
+    };
+    let epargne_prefixe = "Assets:Epargne";
+
+    for directive in directives {
+        let Directive::Transaction(t) = directive else {
+            continue;
+        };
+        if t.date.year() != annee {
+            continue;
+        }
+        let mois_zero = usize::try_from(i16::from(t.date.month()) - 1).unwrap_or(0);
+        for posting in &t.postings {
+            let Some(rustledger_core::IncompleteAmount::Complete(a)) = &posting.value.units else {
+                continue;
+            };
+            if a.currency.as_str() != "EUR" {
+                continue; // foyer euro-centrique
+            }
+            let compte = posting.value.account.as_str();
+            if compte.starts_with(&types.expenses) {
+                let montant = a.number.abs();
+                out.depenses_mois[mois_zero] += montant;
+                let cat = categorie_de(compte);
+                out.depenses_categories.entry(cat).or_default()[mois_zero] += montant;
+            } else if compte.starts_with(&types.income) {
+                out.revenus_mois[mois_zero] += a.number.abs();
+            } else if compte.starts_with(epargne_prefixe) {
+                // Variation nette (signée) : + transfert/intérêts, − retrait.
+                out.epargne_mois[mois_zero] += a.number;
+            }
+        }
+    }
+
+    // Comparaison N vs N−1 : présent seulement si l'année précédente a des
+    // dépenses.
+    let precedente = rapports_annees_traversees(directives, types, annee - 1);
+    if precedente.iter().any(|d| !d.is_zero()) {
+        out.depenses_annee_precedente = Some(precedente);
+    }
+    out
+}
+
+/// Dépenses totales par mois d'une année (utilisé pour N−1).
+fn rapports_annees_traversees(
+    directives: &[Directive],
+    types: &AccountTypes,
+    annee: i16,
+) -> [Decimal; 12] {
+    let mut mois_all = [Decimal::ZERO; 12];
+    for directive in directives {
+        let Directive::Transaction(t) = directive else {
+            continue;
+        };
+        if t.date.year() != annee {
+            continue;
+        }
+        let mois_zero = usize::try_from(i16::from(t.date.month()) - 1).unwrap_or(0);
+        for posting in &t.postings {
+            let Some(rustledger_core::IncompleteAmount::Complete(a)) = &posting.value.units else {
+                continue;
+            };
+            if a.currency.as_str() != "EUR"
+                || !posting.value.account.as_str().starts_with(&types.expenses)
+            {
+                continue;
+            }
+            mois_all[mois_zero] += a.number.abs();
+        }
+    }
+    mois_all
 }
 
 /// Les directives `custom "budget"`, triées (date, compte) — base du diff

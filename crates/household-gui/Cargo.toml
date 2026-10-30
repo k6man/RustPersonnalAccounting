@@ -20,6 +20,7 @@ rustledger-core.workspace = true
 rustledger-budget.workspace = true
 household-core = { path = "../household-core" }
 household-budget = { path = "../household-budget" }
+household-git = { path = "../household-git" }
 rust_decimal.workspace = true
 rust_decimal_macros.workspace = true
 jiff.workspace = true

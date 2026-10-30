@@ -11,15 +11,15 @@
 > - Mise à jour **à chaque jalon et à chaque tâche significative**, dans le **même commit** que le code concerné.
 > - Les tâches découvertes en cours de route sont ajoutées immédiatement, pas perdues.
 
-**État du projet** : jalons 1→6 terminés (jalon 6 : éditeur de budget). Ledger d'exemple
-validé (`rledger check` ✓), fmt/clippy `-D warnings`/tests verts (69 tests).
-**Prochaine action : jalon 7** (rapports, git, polish).
+**État du projet** : **jalons 1→7 terminés — projet complet (v0.1.0)**. Ledger d'exemple
+validé (`rledger check` ✓), fmt/clippy `-D warnings`/tests verts (76 tests).
+**Prochaine action : usage réel** (saisie quotidienne, budgets 2027 via l'éditeur).
 
 ---
 
 ## En cours
 
-_Néant — voir « À faire » (jalon 7)._
+_Néant — projet au stade v0.1.0._
 
 ## À faire
 
@@ -287,20 +287,47 @@ crates ~/.cargo/registry/…-0.24.0 ; à revoir si épinglage un jour déplacé)
 
 ### Jalon 7 — Rapports, git, polish
 
-- [ ] Écran **Rapports** : dépenses par catégorie × mois (heatmap/tableau), comparaison N vs N‑1
-  (`egui_plot` barres), revenus, taux d'épargne.
-- [ ] `household-git` (git2) : statut par fichier, stage + commit programmatique (message proposé :
-  `ledger: AAAA-MM — saisie/édition…` avec compte des changements), historique du ledger (log + paths),
-  résumé de diff ; **validation du ledger avant commit** côté app (indépendante du hook, car git2
-  n'exécute pas les hooks — c'est le choix retenu, justifié dans /docs).
-- [ ] Écran **Git** : statut, diff résumé, commit, historique simple.
-- [ ] Gestion d'erreurs UI homogène (chaînes `thiserror`), toasts, écran d'erreur non fatal.
-- [ ] README complet : installation, lancement, conventions de nommage (comptes FR sans accents),
-  format des budgets (exemples), workflow git (hook + GUI), rôle du TODO.md.
-- [ ] `/docs` : ADR (choix git2 vs binaire git, sémantique budget Fava, `ceiling:` en métadonnées,
-  licence GPL‑3).
-- [ ] CI complète verte + tag `v0.1.0`.
-- [ ] Commit jalon 7.
+- [x] Écran **Rapports** (`views/rapports.rs` + `viewmodel::rapports`) : synthèse de l'année
+  (dépenses, revenus, épargne, taux d'épargne), **comparaison N vs N−1 en barres**
+  (`egui_plot 0.38` : 2 × `BarChart` de 12 barres, noms = mois, bandeau absent si N−1 sans
+  dépenses), **heatmap** catégories × mois (`TableBuilder`, intensité relative au max de la
+  ligne) + ligne TOTAL et colonne Année ; conversion `f64` uniquement au tracé.
+- [x] `household-git` (git2 0.21, libgit2 statique) : `decouvrir`, `statut`
+  (nouveau/modifié/supprimé/renommé, index + arbre cumulés), `tout_indexer` (add_all +
+  update_all — les suppressions passent), `commit` (config git du dépôt/global, replis
+  locaux ; premier commit sans parent supporté), `historique` (revwalk TIME, filtre par
+  chemin via comparaison d'entrée d'arbre parent/enfant — création/modif/suppression,
+  dates jiff UTC), `resume_diff` (**include_untracked** sinon les nouvelles transactions
+  manquent au décompte), `suggere_message` (`ledger: AAAA-MM — saisie/édition`, agnostique
+  au préfixe `ledger/`). 3 tests sur dépôts temporaires **réels** (libgit2).
+- [x] Écran **Git** (`views/git.rs` + `worker::git_resultat`) : statut par fichier (tableau),
+  résumé du diff (fichiers/insertions/suppressions), message de commit **prérempli par la
+  suggestion** (re-préremplie quand elle change ; tampon utilisateur respecté sinon),
+  bouton commit désactivé si rien à commiter, historique filtré sur `ledger`
+  (OID/date/auteur/sujet), bouton Actualiser.
+- [x] **Validation du ledger avant commit côté app** (`Command::GitCommit` →
+  `Snapshot::load`, refus en flash si le ledger est cassé) — git2 n'exécute pas les hooks ;
+  choix documenté dans `docs/ADR-002` et rappelé dans l'écran.
+- [x] Gestion d'erreurs UI homogène : flash (succès vert / erreur rouge, clic =
+  acquittement) partout, chaînes `thiserror` → `LoadOutcome::Refuse/Echec`, écran Git
+  `disponible=false` = message informatif (jamais d'écran de mort).
+- [x] README complet (installation, lancement, 6 écrans décrits, conventions, exemple de
+  budget, workflow git, rôle du TODO.md).
+- [x] `/docs` : ADR-001 (rustledger + GPL-3.0), ADR-002 (git2 + validation côté app),
+  ADR-003 (budget Fava + rollover cumul + épargne destinataire + patrimoine Equity exclu).
+- [x] CI complète verte + **tag `v0.1.0`**.
+- [x] Commit jalon 7.
+
+**Découvertes du jalon 7** :
+- git2 0.21 : `StatusEntry::path()` renvoie `Result`, `Commit::summary()` renvoie
+  `Result<Option<&str>>` (`ok().flatten()`) ; `DiffOptions::include_untracked(true)`
+  indispensable pour que `resume_diff` voie les nouveaux fichiers non suivis.
+- `Repository::discover` marche depuis n'importe quel chemin englobé (fichier du ledger
+  compris) ; **un commit via libgit2 n'exécute pas le hook pre-commit** — d'où la
+  revalidation dans le worker (choix ADR-002).
+- Les chemins du statut sont **relatifs à la racine du dépôt**
+  (`ledger/transactions/2026/04.beancount`) : le message suggéré parse donc n'importe quel
+  préfixe devant `transactions/AAAA/MM.beancount`.
 
 ## Fait
 
@@ -339,6 +366,12 @@ crates ~/.cargo/registry/…-0.24.0 ; à revoir si épinglage un jour déplacé)
   diff de confirmation + supersession expliquée, réel sous budget, totaux ligne/colonne,
   duplication N+1 (dialogue %/pas), note intérêts sur l'épargne, rollover par famille
   persisté en TOML local (Q6 tranchée) ; 69 tests verts au total (42 GUI).
+- [x] **Jalon 7 — rapports, git, polish (2026‑10‑30)** : écran Rapports (heatmap catégories
+  × mois, barres N vs N−1, revenus/épargne/taux d'épargne), crate `household-git` (git2 :
+  statut/index/commit/historique filtré/résumé diff/message suggéré — 3 tests sur dépôts
+  réels), écran Git (commit avec suggestion + **validation du ledger préalable côté app**,
+  ADR-002), gestion d'erreurs UI homogène, README complet, `/docs` (3 ADR), tag `v0.1.0` ;
+  76 tests verts au total.
 
 ### Reconnaissance — capacités vérifiées de rustledger 0.24.0 (publié 2026‑09‑06)
 

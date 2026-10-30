@@ -52,6 +52,16 @@ pub enum Command {
         pourcent: rust_decimal::Decimal,
         pas: rust_decimal::Decimal,
     },
+    /// Écran Git : charger le statut / diff résumé / historique.
+    GitStatut,
+    /// Écran Git : charger les données, éventuellement commiter.
+    ///
+    /// `message = Some` ⇒ indexer + commiter (après validation du ledger —
+    /// git2 n'exécute pas les hooks, cf. ADR-002) ; `None` ⇒ lecture seule.
+    GitCommit {
+        /// Message de commit.
+        message: String,
+    },
 }
 
 /// Réponses du worker vers l'UI.
@@ -70,6 +80,27 @@ pub enum LoadOutcome {
     /// Écriture refusée (validation locale ou pré-vérification) : le ledger
     /// est inchangé, un message lisible accompagne le refus.
     Refuse(String),
+    /// Données git chargées (écran Git) + flash (témoin de succès/erreur).
+    Git {
+        donnees: GitDonnees,
+        /// Message flash : `Some((texte, est_erreur))`.
+        message: Option<(String, bool)>,
+    },
+}
+
+/// Données de l'écran **Git** (chargées hors UI thread).
+#[derive(Debug, Clone, Default)]
+pub struct GitDonnees {
+    /// Le dépôt git englobe-t-il le ledger ? (`false` → écran informatif.)
+    pub disponible: bool,
+    /// Fichiers modifiés (index + arborescence).
+    pub fichiers: Vec<household_git::FichierStatut>,
+    /// Résumé du diff HEAD → index + arborescence.
+    pub resume: household_git::ResumeDiff,
+    /// Historique des commits touchant le ledger.
+    pub historique: Vec<household_git::CommitInfo>,
+    /// Message de commit suggéré (mois des transactions modifiées).
+    pub message_suggere: String,
 }
 
 /// Délai de « settle » avant rechargement après un événement du watcher :
@@ -137,6 +168,14 @@ pub fn demarrer(ctx: egui::Context, main: PathBuf) -> (Sender<Command>, Receiver
                     out_tx
                         .send(generer_annee(&main, source, cible, pourcent, pas))
                         .ok();
+                    ctx.request_repaint();
+                }
+                Command::GitStatut => {
+                    out_tx.send(git_resultat(&main, None)).ok();
+                    ctx.request_repaint();
+                }
+                Command::GitCommit { message } => {
+                    out_tx.send(git_resultat(&main, Some(&message))).ok();
                     ctx.request_repaint();
                 }
             }
@@ -338,6 +377,100 @@ fn generer_annee(
         },
         Err(e) => LoadOutcome::Refuse(format!("génération refusée : {e}")),
     }
+}
+
+/// Écran Git : charger les données, et si `message` est fourni, **valider
+/// le ledger → indexer → commiter** puis renvoyer les données fraîches.
+///
+/// Validation avant commit côté app : git2 (libgit2) n'exécute pas les
+/// hooks pre-commit — cf. ADR-002 — donc l'écran refuse de commiter si le
+/// ledger ne se charge pas sans erreur.
+fn git_resultat(main: &Path, message: Option<&str>) -> LoadOutcome {
+    let repo = match household_git::decouvrir(main) {
+        Ok(repo) => repo,
+        Err(e) => {
+            return LoadOutcome::Git {
+                donnees: GitDonnees::default(),
+                message: Some((e.to_string(), true)),
+            };
+        }
+    };
+
+    if let Some(message) = message {
+        // 1. Rien à commiter ?
+        match household_git::statut(&repo) {
+            Ok(statuts) => {
+                if statuts.is_empty() {
+                    return LoadOutcome::Refuse(
+                        "rien à commiter — aucun fichier modifié".to_string(),
+                    );
+                }
+            }
+            Err(e) => {
+                return LoadOutcome::Git {
+                    donnees: GitDonnees::default(),
+                    message: Some((e.to_string(), true)),
+                };
+            }
+        }
+        // 2. Validation du ledger (comme le hook pre-commit, mais côté app).
+        if let Err(e) = household_core::Snapshot::load(main) {
+            return LoadOutcome::Refuse(format!(
+                "ledger invalide — commit refusé : {e}  |  corrigez avant de commiter"
+            ));
+        }
+        // 3. Index + commit.
+        if let Err(e) = household_git::tout_indexer(&repo) {
+            return LoadOutcome::Git {
+                donnees: GitDonnees::default(),
+                message: Some((e.to_string(), true)),
+            };
+        }
+        return match household_git::commit(&repo, message) {
+            Ok(oid) => match git_donnees(&repo) {
+                Ok(donnees) => LoadOutcome::Git {
+                    donnees,
+                    message: Some((format!("commité {oid}"), false)),
+                },
+                Err(e) => LoadOutcome::Git {
+                    donnees: GitDonnees::default(),
+                    message: Some((e.to_string(), true)),
+                },
+            },
+            Err(e) => LoadOutcome::Git {
+                donnees: GitDonnees::default(),
+                message: Some((e.to_string(), true)),
+            },
+        };
+    }
+
+    // Sans message = simple lecture du statut (le déclencheur de l'écran).
+    match git_donnees(&repo) {
+        Ok(donnees) => LoadOutcome::Git {
+            donnees,
+            message: None,
+        },
+        Err(e) => LoadOutcome::Git {
+            donnees: GitDonnees::default(),
+            message: Some((e, true)),
+        },
+    }
+}
+
+/// Assemble les données git (statut + diff résumé + historique filtré).
+fn git_donnees(repo: &household_git::Repository) -> Result<GitDonnees, String> {
+    let fichiers = household_git::statut(repo).map_err(|e| e.to_string())?;
+    let message_suggere = household_git::suggere_message(&fichiers);
+    let resume = household_git::resume_diff(repo).map_err(|e| e.to_string())?;
+    let historique =
+        household_git::historique(repo, Some("ledger"), 20).map_err(|e| e.to_string())?;
+    Ok(GitDonnees {
+        disponible: true,
+        fichiers,
+        resume,
+        historique,
+        message_suggere,
+    })
 }
 
 /// View-model sur le snapshot **frais** post-écriture. Le writer a déjà

@@ -1727,6 +1727,8 @@ name = "household-git"
 version = "0.1.0"
 dependencies = [
  "git2",
+ "jiff",
+ "rust_decimal_macros",
  "thiserror 2.0.21",
 ]
 
@@ -1740,6 +1742,7 @@ dependencies = [
  "egui_plot",
  "household-budget",
  "household-core",
+ "household-git",
  "jiff",
  "notify",
  "rust_decimal",

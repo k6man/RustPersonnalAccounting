@@ -15,21 +15,25 @@ use egui::RichText;
 use crate::viewmodel::UiData;
 use crate::worker::{Command, LoadOutcome};
 
-/// Les écrans de l'application (rapports → jalon 7).
+/// Les écrans de l'application.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Onglet {
     TableauDeBord,
     Journal,
     Saisie,
     Budget,
+    Rapports,
+    Git,
 }
 
 impl Onglet {
-    const TOUS: [Onglet; 4] = [
+    const TOUS: [Onglet; 6] = [
         Onglet::TableauDeBord,
         Onglet::Journal,
         Onglet::Saisie,
         Onglet::Budget,
+        Onglet::Rapports,
+        Onglet::Git,
     ];
 
     fn libelle(self) -> &'static str {
@@ -38,6 +42,8 @@ impl Onglet {
             Self::Journal => "Journal",
             Self::Saisie => "Saisie",
             Self::Budget => "Budget",
+            Self::Rapports => "Rapports",
+            Self::Git => "Git",
         }
     }
 }
@@ -66,6 +72,10 @@ pub struct FoyerApp {
     journal: crate::views::journal::UiState,
     saisie: crate::views::saisie::UiState,
     budget: crate::views::budget::UiState,
+    /// État de l'écran Git (message de commit en cours d'édition).
+    git: crate::views::git::UiState,
+    /// Données git du dernier chargement (`None` tant que non demandées).
+    git_donnees: Option<crate::worker::GitDonnees>,
     /// Préférences GUI (rollover par famille…) — TOML local, jamais le ledger.
     config: crate::config::Config,
 }
@@ -88,6 +98,8 @@ impl FoyerApp {
             journal: crate::views::journal::UiState::new(),
             saisie: crate::views::saisie::UiState::nouveau(crate::worker::aujourd_hui()),
             budget: crate::views::budget::UiState::nouveau(crate::worker::aujourd_hui().year()),
+            git: crate::views::git::UiState::nouveau(),
+            git_donnees: None,
             config: crate::config::Config::charger(),
         }
     }
@@ -121,6 +133,14 @@ impl eframe::App for FoyerApp {
                 }
                 LoadOutcome::Refuse(refus) => {
                     self.flash = Some((refus, true));
+                }
+                LoadOutcome::Git { donnees, message } => {
+                    self.git_donnees = Some(donnees);
+                    self.en_chargement = false;
+                    if let Some((texte, est_erreur)) = message {
+                        self.flash = Some((texte, est_erreur));
+                    }
+                    continue;
                 }
             }
             self.en_chargement = false;
@@ -209,6 +229,12 @@ impl eframe::App for FoyerApp {
                         .clicked()
                     {
                         self.onglet = onglet;
+                        // L'écran Git relit son statut à chaque entrée.
+                        if onglet == Onglet::Git {
+                            self.en_chargement = true;
+                            self.flash = None;
+                            self.cmd_tx.send(Command::GitStatut).ok();
+                        }
                     }
                 }
                 if let Some((message, est_erreur)) = &self.flash {
@@ -332,6 +358,39 @@ impl eframe::App for FoyerApp {
                             }
                         }
                         None => {}
+                    }
+                }
+                (Some(donnees), Onglet::Rapports) => {
+                    crate::views::rapports::afficher(ui, &donnees.rapports);
+                }
+                (Some(_), Onglet::Git) => {
+                    match &self.git_donnees {
+                        Some(git) => {
+                            let action = crate::views::git::afficher(ui, git, &mut self.git);
+                            match action {
+                                Some(crate::views::git::ActionGit::Actualiser) => {
+                                    self.en_chargement = true;
+                                    self.flash = None;
+                                    self.cmd_tx.send(Command::GitStatut).ok();
+                                }
+                                Some(crate::views::git::ActionGit::Commit(message))
+                                    if !message.is_empty() =>
+                                {
+                                    self.en_chargement = true;
+                                    self.flash = None;
+                                    self.cmd_tx.send(Command::GitCommit { message }).ok();
+                                }
+                                _ => {}
+                            }
+                        }
+                        None => {
+                            // Écran git pas encore chargé : spinner + premier
+                            // déclenchement (l'arm de l'onglet a déjà
+                            // envoyé GitStatut).
+                            ui.centered_and_justified(|ui| {
+                                ui.add(egui::widgets::Spinner::new().size(30.0));
+                            });
+                        }
                     }
                 }
                 (None, _) => {

@@ -9,6 +9,10 @@ rust-version.workspace = true
 [dependencies]
 git2.workspace = true
 thiserror.workspace = true
+jiff.workspace = true
+
+[dev-dependencies]
+rust_decimal_macros.workspace = true
 
 [lints]
 workspace = true
