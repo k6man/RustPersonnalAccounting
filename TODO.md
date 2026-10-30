@@ -13,13 +13,43 @@
 
 **État du projet** : **jalons 1→7 terminés — projet complet (v0.1.0)**. Ledger d'exemple
 validé (`rledger check` ✓), fmt/clippy `-D warnings`/tests verts (76 tests).
+Passe UI « largeurs » appliquée (2026-10-30).
 **Prochaine action : usage réel** (saisie quotidienne, budgets 2027 via l'éditeur).
 
 ---
 
 ## En cours
 
-_Néant — projet au stade v0.1.0._
+_Passe UI « largeurs » (2026-10-30) — terminée, commit de cette passe ci-dessous._
+
+**Découvertes egui 0.37 de la passe largeurs** (source de vérité :
+`~/.cargo/registry/…/egui_extras-0.37.0/src/{table,sizing}.rs`) :
+- `TableBuilder` crée son `ScrollArea` en `[false, vscroll]` — **pas de scroll horizontal
+  intégré** ; une grille plus large que le panneau central est coupée, pas scrollée.
+  Contournement (vue Budget) : enrouler la table dans un `egui::ScrollArea::horizontal()
+  .auto_shrink([false; 2])` — le nesting vertical (table) / horizontal (extérieur) est
+  supporté.
+- `Column::remainder()` calcule le reste comme `max(0, disponible − autres colonnes)` :
+  quand la somme des colonnes `auto()` dépasse la largeur disponible, une colonne
+  remainder sans plancher s'écrase à **0**. Toujours `.at_least(min)` sur un remainder
+  de contenu important (`sizing.rs::to_lengths` : le min est ensuite clampé dans le
+  range et le total peut déborder → c'est le scroll horizontal extérieur qui absorbe).
+- Colonnes à contenu variable : `Column::auto().at_least(min)` (exact fige et coupe) ;
+  `at_least` suit la même voie que pour les cellules de la grille.
+- `desired_width(f32::INFINITY)` : OK dans une cellule de table ou un slot de layout
+  horizontal (remplit le rect réel) ; **interdit dans un `egui::Grid`** (mesure à 2
+  passes, peut dépasser la fenêtre) — dans les grilles, élargir les valeurs fixes.
+- `ProgressBar.text(...)` est **tronqué à la largeur de la barre** : mettre le texte
+  dans un `ui.label` avant la barre, et la barre en `desired_width(f32::INFINITY)`.
+
+**Détail des réglages appliqués** : colonnes budget `exact(56/72/76)` →
+`auto().at_least(52/88/84)` + remainder `.at_least(180)` ; champ d'édition de cellule
+`desired_width(f32::INFINITY)` ; historique Git `exact(76/110/150)` →
+`auto().at_least(80/120/140)` ; filtres journal 180→240 / 200→260 / 110→130, montants
+90→110, dates 105→130 ; saisie libellé/tags/liens 340→420, tiers 240→320, montant
+120→150, date 110→130 ; dashboard jauges : texte sorti de la barre + barre pleines
+largeur, barres carte budget 180→240 ; fenêtre 1200×760 → 1300×800 (min 980×620 →
+1060×680). `cargo check`/fmt/clippy/tests/`rledger check` verts après passe.
 
 ## À faire
 

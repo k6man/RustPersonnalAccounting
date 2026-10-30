@@ -264,100 +264,123 @@ fn table_grille(
     let visibles = logique::visibles(&arbre, &etat.repliees);
     let tetes: BTreeSet<usize> = logique::tetes(&arbre).into_iter().collect();
 
-    let mut table = TableBuilder::new(ui)
-        .striped(true)
-        .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
-        .column(Column::remainder().resizable(true))
-        .column(Column::exact(56.0)) // rollover
-        .column(Column::exact(72.0)); // année
-    for _ in 0..12 {
-        table = table.column(Column::exact(76.0));
-    }
-    table
-        .header(22.0, |mut en_tete| {
-            en_tete.col(|ui| {
-                ui.strong("Poste");
-            });
-            en_tete.col(|ui| {
-                ui.strong("Roul.");
-            });
-            en_tete.col(|ui| {
-                ui.strong("Année");
-            });
-            for mois in MOIS {
-                en_tete.col(|ui| {
-                    ui.strong(mois);
-                });
+    // La grille 12 mois déborde d'une fenêtre étroite (~1150 px de colonnes
+    // auto) ; le `ScrollArea` interne de `TableBuilder` (egui_extras 0.37)
+    // ne scrolle pas horizontalement — on l'enroule donc dans un scroll
+    // horizontal extérieur.
+    egui::ScrollArea::horizontal()
+        .auto_shrink([false; 2])
+        .show(ui, |ui| {
+            let mut table = TableBuilder::new(ui)
+                .striped(true)
+                .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
+                // Min sur les postes : quand la somme des colonnes dépasse
+                // la largeur disponible, egui calcule le reste comme
+                // `max(0, disponible − autres)` → 0 sans ce plancher.
+                .column(Column::remainder().resizable(true).at_least(180.0))
+                .column(Column::auto().at_least(52.0)) // rollover
+                .column(Column::auto().at_least(88.0)); // année
+            for _ in 0..12 {
+                table = table.column(Column::auto().at_least(84.0));
             }
-        })
-        .body(|mut corps| {
-            for &index in &visibles {
-                let noeud = &arbre[index];
-                let est_tete = tetes.contains(&index);
-                let rollover_on = est_tete && rollover_actif(&noeud.compte);
+            table
+                .header(22.0, |mut en_tete| {
+                    en_tete.col(|ui| {
+                        ui.strong("Poste");
+                    });
+                    en_tete.col(|ui| {
+                        ui.strong("Roul.");
+                    });
+                    en_tete.col(|ui| {
+                        ui.strong("Année");
+                    });
+                    for mois in MOIS {
+                        en_tete.col(|ui| {
+                            ui.strong(mois);
+                        });
+                    }
+                })
+                .body(|mut corps| {
+                    for &index in &visibles {
+                        let noeud = &arbre[index];
+                        let est_tete = tetes.contains(&index);
+                        let rollover_on = est_tete && rollover_actif(&noeud.compte);
 
-                corps.row(32.0, |mut rangee| {
-                    // Poste (indenté, triangle si enfants) + note épargne.
-                    rangee.col(|ui| {
-                        ui.horizontal(|ui| {
-                            for _ in 0..noeud.profondeur {
-                                ui.label("    ");
-                            }
-                            if noeud.a_enfants {
-                                let ouvert = !etat.repliees.contains(&noeud.compte);
-                                if ui
-                                    .selectable_label(false, if ouvert { "▾" } else { "▸" })
-                                    .clicked()
-                                {
-                                    if ouvert {
-                                        etat.repliees.insert(noeud.compte.clone());
+                        corps.row(32.0, |mut rangee| {
+                            // Poste (indenté, triangle si enfants) + note épargne.
+                            rangee.col(|ui| {
+                                ui.horizontal(|ui| {
+                                    for _ in 0..noeud.profondeur {
+                                        ui.label("    ");
+                                    }
+                                    if noeud.a_enfants {
+                                        let ouvert = !etat.repliees.contains(&noeud.compte);
+                                        if ui
+                                            .selectable_label(false, if ouvert { "▾" } else { "▸" })
+                                            .clicked()
+                                        {
+                                            if ouvert {
+                                                etat.repliees.insert(noeud.compte.clone());
+                                            } else {
+                                                etat.repliees.remove(&noeud.compte);
+                                            }
+                                        }
+                                    }
+                                    let nom = if noeud.budgete {
+                                        RichText::new(noeud.compte.as_str())
                                     } else {
-                                        etat.repliees.remove(&noeud.compte);
+                                        RichText::new(noeud.compte.as_str()).weak()
+                                    };
+                                    ui.label(nom);
+                                });
+                                if logique::note_epargne(&noeud.compte).is_some() {
+                                    ui.label(
+                                        RichText::new("intérêts inclus dans le réel")
+                                            .weak()
+                                            .small(),
+                                    );
+                                }
+                            });
+
+                            // Toggle rollover (lignes de tête seulement ; l'état réel
+                            // vient de la config — rechargée après bascule).
+                            rangee.col(|ui| {
+                                if est_tete {
+                                    let mut affiche = rollover_on;
+                                    if ui.checkbox(&mut affiche, "").clicked() {
+                                        *action = Some(ActionBudget::BasculerRollover(
+                                            noeud.compte.clone(),
+                                        ));
                                     }
                                 }
+                            });
+
+                            // Total annuel (budget, ou report sortant en rollover).
+                            rangee.col(|ui| {
+                                let texte = if rollover_on {
+                                    fmt::nombre(logique::rollover_de(noeud).carry_out())
+                                } else {
+                                    fmt::nombre(noeud.cellules.iter().map(|c| c.budgeted).sum())
+                                };
+                                ui.label(RichText::new(texte).strong());
+                            });
+
+                            // Les 12 cellules.
+                            for (mois_zero, cellule) in noeud.cellules.iter().enumerate() {
+                                rangee.col(|ui| {
+                                    cellule_budget(
+                                        ui,
+                                        noeud,
+                                        cellule,
+                                        mois_zero,
+                                        rollover_on,
+                                        etat,
+                                    );
+                                });
                             }
-                            let nom = if noeud.budgete {
-                                RichText::new(noeud.compte.as_str())
-                            } else {
-                                RichText::new(noeud.compte.as_str()).weak()
-                            };
-                            ui.label(nom);
-                        });
-                        if logique::note_epargne(&noeud.compte).is_some() {
-                            ui.label(RichText::new("intérêts inclus dans le réel").weak().small());
-                        }
-                    });
-
-                    // Toggle rollover (lignes de tête seulement ; l'état réel
-                    // vient de la config — rechargée après bascule).
-                    rangee.col(|ui| {
-                        if est_tete {
-                            let mut affiche = rollover_on;
-                            if ui.checkbox(&mut affiche, "").clicked() {
-                                *action =
-                                    Some(ActionBudget::BasculerRollover(noeud.compte.clone()));
-                            }
-                        }
-                    });
-
-                    // Total annuel (budget, ou report sortant en rollover).
-                    rangee.col(|ui| {
-                        let texte = if rollover_on {
-                            fmt::nombre(logique::rollover_de(noeud).carry_out())
-                        } else {
-                            fmt::nombre(noeud.cellules.iter().map(|c| c.budgeted).sum())
-                        };
-                        ui.label(RichText::new(texte).strong());
-                    });
-
-                    // Les 12 cellules.
-                    for (mois_zero, cellule) in noeud.cellules.iter().enumerate() {
-                        rangee.col(|ui| {
-                            cellule_budget(ui, noeud, cellule, mois_zero, rollover_on, etat);
                         });
                     }
                 });
-            }
         });
 }
 
@@ -447,7 +470,7 @@ fn champ_edition(ui: &mut egui::Ui, etat: &mut UiState) {
     };
     ui.add(
         egui::TextEdit::singleline(&mut edition.tampon)
-            .desired_width(64.0)
+            .desired_width(f32::INFINITY) // occupe toute la colonne du mois
             .hint_text("0.00"),
     );
 }

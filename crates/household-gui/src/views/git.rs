@@ -147,9 +147,9 @@ pub fn afficher(ui: &mut egui::Ui, git: &GitDonnees, etat: &mut UiState) -> Opti
         ui.label(RichText::new("Historique (commits touchant le ledger)").strong());
         egui_extras::TableBuilder::new(ui)
             .striped(true)
-            .column(egui_extras::Column::exact(76.0))
-            .column(egui_extras::Column::exact(110.0))
-            .column(egui_extras::Column::exact(150.0))
+            .column(egui_extras::Column::auto().at_least(80.0))
+            .column(egui_extras::Column::auto().at_least(120.0))
+            .column(egui_extras::Column::auto().at_least(140.0))
             .column(egui_extras::Column::remainder())
             .header(20.0, |mut en_tete| {
                 en_tete.col(|ui| {

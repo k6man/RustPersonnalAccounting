@@ -270,19 +270,19 @@ fn panneau_filtres(ui: &mut egui::Ui, etat: &mut UiState) {
             ui.label("Recherche :");
             ui.add(
                 egui::TextEdit::singleline(&mut etat.texte)
-                    .desired_width(180.0)
+                    .desired_width(240.0)
                     .hint_text("tiers, libellé…"),
             );
             ui.label("Compte :");
             ui.add(
                 egui::TextEdit::singleline(&mut etat.compte)
-                    .desired_width(200.0)
+                    .desired_width(260.0)
                     .hint_text("Expenses:…"),
             );
             ui.label("Tag :");
             ui.add(
                 egui::TextEdit::singleline(&mut etat.tag)
-                    .desired_width(110.0)
+                    .desired_width(130.0)
                     .hint_text("#courses"),
             );
             ui.end_row();
@@ -292,9 +292,9 @@ fn panneau_filtres(ui: &mut egui::Ui, etat: &mut UiState) {
             ui.label("au :");
             champ_date(ui, &mut etat.date_max);
             ui.label("Montant ≥ :");
-            ui.add(egui::TextEdit::singleline(&mut etat.montant_min).desired_width(90.0));
+            ui.add(egui::TextEdit::singleline(&mut etat.montant_min).desired_width(110.0));
             ui.label("≤ :");
-            ui.add(egui::TextEdit::singleline(&mut etat.montant_max).desired_width(90.0));
+            ui.add(egui::TextEdit::singleline(&mut etat.montant_max).desired_width(110.0));
             ui.end_row();
         });
     ui.add_space(2.0);
@@ -313,7 +313,7 @@ fn panneau_filtres(ui: &mut egui::Ui, etat: &mut UiState) {
 fn champ_date(ui: &mut egui::Ui, valeur: &mut String) {
     let valide = valeur.trim().is_empty() || date_optionnelle(valeur).is_some();
     let champ = egui::TextEdit::singleline(valeur)
-        .desired_width(105.0)
+        .desired_width(130.0)
         .hint_text("AAAA-MM-JJ");
     if valide {
         ui.add(champ);

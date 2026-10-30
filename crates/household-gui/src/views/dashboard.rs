@@ -52,19 +52,19 @@ fn cartes_soldes(ui: &mut egui::Ui, donnees: &DashboardData) {
                         EtatJauge::Depassement => "DÉPASSÉ",
                     }
                 );
-                let barre = egui::ProgressBar::new(fraction as f32)
-                    .desired_width(320.0)
-                    .fill(couleur)
-                    .text(texte);
+                // Le texte vit HORS de la barre : jamais tronqué par sa
+                // largeur, quelle que soit la fenêtre.
+                ui.label(texte);
+                let barre = egui::ProgressBar::new(fraction as f32).fill(couleur);
                 if jauge.etat == EtatJauge::Depassement {
                     // Dépassement : visuellement bloquant (cadre rouge).
                     egui::Frame::group(ui.style())
                         .stroke(egui::Stroke::new(2.0, couleur))
                         .show(ui, |ui| {
-                            ui.add(barre);
+                            ui.add(barre.desired_width(f32::INFINITY));
                         });
                 } else {
-                    ui.add(barre);
+                    ui.add(barre.desired_width(f32::INFINITY));
                 }
             });
         }
@@ -134,7 +134,7 @@ fn carte_budget(ui: &mut egui::Ui, donnees: &DashboardData) {
                 let ratio = poste.consomme().unwrap_or(0.0);
                 ui.add(
                     egui::ProgressBar::new(ratio.clamp(0.0, 1.0) as f32)
-                        .desired_width(180.0)
+                        .desired_width(240.0)
                         .show_percentage()
                         .fill(if ratio > 1.0 {
                             Color32::from_rgb(0xd8, 0x3b, 0x2f)

@@ -113,7 +113,7 @@ pub fn afficher(
                 ui.label("Libellé :");
                 ui.add(
                     egui::TextEdit::singleline(&mut etat.brouillon.libelle)
-                        .desired_width(340.0)
+                        .desired_width(420.0)
                         .hint_text("ex. Courses de la semaine"),
                 );
                 ui.end_row();
@@ -121,7 +121,7 @@ pub fn afficher(
                 ui.label("Tags :");
                 ui.add(
                     egui::TextEdit::singleline(&mut etat.brouillon.tags)
-                        .desired_width(340.0)
+                        .desired_width(420.0)
                         .hint_text("#courses #weekend"),
                 );
                 ui.end_row();
@@ -129,7 +129,7 @@ pub fn afficher(
                 ui.label("Liens :");
                 ui.add(
                     egui::TextEdit::singleline(&mut etat.brouillon.liens)
-                        .desired_width(340.0)
+                        .desired_width(420.0)
                         .hint_text("^facture-042"),
                 );
                 ui.end_row();
@@ -217,7 +217,7 @@ fn lignes_postings(ui: &mut egui::Ui, etat: &mut UiState, comptes: &[InfoCompte]
                 // Montant (vide = équilibrage, marqué).
                 ui.add(
                     egui::TextEdit::singleline(&mut etat.brouillon.lignes[numero].montant)
-                        .desired_width(120.0)
+                        .desired_width(150.0)
                         .hint_text(if montant_vide {
                             "= équilibrage"
                         } else {
@@ -269,7 +269,7 @@ fn champ_suggestions(ui: &mut egui::Ui, texte: &mut String, propositions: &[Stri
     ui.vertical(|ui| {
         let reponse = ui.add(
             egui::TextEdit::singleline(texte)
-                .desired_width(240.0)
+                .desired_width(320.0)
                 .hint_text(indice),
         );
         if reponse.has_focus() {
@@ -284,7 +284,7 @@ fn champ_suggestions(ui: &mut egui::Ui, texte: &mut String, propositions: &[Stri
 
 fn champ_date(ui: &mut egui::Ui, valeur: &mut String, valide: bool) {
     let champ = egui::TextEdit::singleline(valeur)
-        .desired_width(110.0)
+        .desired_width(130.0)
         .hint_text("AAAA-MM-JJ");
     if valide {
         ui.add(champ);
