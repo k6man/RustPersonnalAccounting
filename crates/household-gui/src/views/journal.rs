@@ -92,101 +92,111 @@ pub fn afficher(
     let (debut, fin) = pagination.tranche(lignes.len());
     let pages = pagination.pages(lignes.len());
 
-    // 4. Tableau.
-    let table = TableBuilder::new(ui)
-        .striped(true)
-        .resizable(true)
-        .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
-        .column(Column::auto().resizable(true)) // date
-        .column(Column::exact(24.0)) // !
-        .column(Column::auto().resizable(true)) // tiers
-        .column(Column::remainder()) // libellé
-        .column(Column::auto()) // comptes
-        .column(Column::auto()) // montant
-        .column(Column::auto()); // tags
-    table
-        .header(22.0, |mut en_tete| {
-            en_tete.col(|ui| {
-                ui.strong("Date");
-            });
-            en_tete.col(|ui| {
-                ui.strong("!");
-            });
-            en_tete.col(|ui| {
-                ui.strong("Tiers");
-            });
-            en_tete.col(|ui| {
-                ui.strong("Libellé");
-            });
-            en_tete.col(|ui| {
-                ui.strong("Comptes");
-            });
-            en_tete.col(|ui| {
-                ui.strong("Montant");
-            });
-            en_tete.col(|ui| {
-                ui.strong("Tags");
-            });
-        })
-        .body(|mut corps| {
-            for ligne in lignes.iter().skip(debut).take(fin - debut) {
-                corps.row(20.0, |mut rangee| {
-                    let selectionnee = etat.selection.is_some_and(|s| s == ligne.index);
-                    rangee.col(|ui| {
-                        etiquette_selectionnable(
-                            ui,
-                            selectionnee,
-                            RichText::new(ligne.date.to_string()).monospace(),
-                        );
+    // 4. Tableau. Enroulé dans un scroll horizontal : les colonnes auto
+    // (comptes, tags) peuvent être longues et `TableBuilder` (egui_extras
+    // 0.37) ne scrolle pas horizontalement — sans ça, contenu coupé.
+    egui::ScrollArea::horizontal()
+        .auto_shrink([false; 2])
+        .show(ui, |ui| {
+            TableBuilder::new(ui)
+                .striped(true)
+                .resizable(true)
+                .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
+                .column(Column::auto().at_least(88.0)) // date
+                .column(Column::exact(24.0)) // !
+                .column(Column::auto().at_least(100.0)) // tiers
+                .column(Column::remainder().at_least(150.0)) // libellé
+                .column(Column::auto().at_least(160.0)) // comptes
+                .column(Column::auto().at_least(90.0)) // montant
+                .column(Column::auto().at_least(120.0)) // tags
+                .header(22.0, |mut en_tete| {
+                    en_tete.col(|ui| {
+                        ui.strong("Date");
                     });
-                    rangee.col(|ui| {
-                        if ligne.flag == '!' {
-                            ui.label(
-                                RichText::new("!").color(egui::Color32::from_rgb(0xe2, 0x93, 0x1b)),
-                            );
-                        }
+                    en_tete.col(|ui| {
+                        ui.strong("!");
                     });
-                    rangee.col(|ui| {
-                        etiquette_selectionnable(
-                            ui,
-                            selectionnee,
-                            ligne.tiers.as_deref().unwrap_or(""),
-                        );
+                    en_tete.col(|ui| {
+                        ui.strong("Tiers");
                     });
-                    rangee.col(|ui| {
-                        etiquette_selectionnable(ui, selectionnee, &ligne.libelle);
+                    en_tete.col(|ui| {
+                        ui.strong("Libellé");
                     });
-                    rangee.col(|ui| {
-                        etiquette_selectionnable(ui, selectionnee, &ligne.categories);
+                    en_tete.col(|ui| {
+                        ui.strong("Comptes");
                     });
-                    rangee.col(|ui| {
-                        let texte = ligne
-                            .montant
-                            .map(fmt::eur)
-                            .unwrap_or_else(|| "…".to_string());
-                        etiquette_selectionnable(ui, selectionnee, RichText::new(texte).strong());
+                    en_tete.col(|ui| {
+                        ui.strong("Montant");
                     });
-                    rangee.col(|ui| {
-                        if !ligne.tags.is_empty() {
-                            etiquette_selectionnable(
-                                ui,
-                                selectionnee,
-                                format!("#{}", ligne.tags.join(" #")),
-                            );
-                        }
+                    en_tete.col(|ui| {
+                        ui.strong("Tags");
                     });
-                });
-            }
-            if lignes.is_empty() {
-                corps.row(24.0, |mut rangee| {
-                    rangee.col(|ui| {
-                        ui.label("Aucune écriture pour ces filtres.");
-                    });
-                    for _ in 0..6 {
-                        rangee.col(|_ui| {});
+                })
+                .body(|mut corps| {
+                    for ligne in lignes.iter().skip(debut).take(fin - debut) {
+                        corps.row(20.0, |mut rangee| {
+                            let selectionnee = etat.selection.is_some_and(|s| s == ligne.index);
+                            rangee.col(|ui| {
+                                etiquette_selectionnable(
+                                    ui,
+                                    selectionnee,
+                                    RichText::new(ligne.date.to_string()).monospace(),
+                                );
+                            });
+                            rangee.col(|ui| {
+                                if ligne.flag == '!' {
+                                    ui.label(
+                                        RichText::new("!")
+                                            .color(egui::Color32::from_rgb(0xe2, 0x93, 0x1b)),
+                                    );
+                                }
+                            });
+                            rangee.col(|ui| {
+                                etiquette_selectionnable(
+                                    ui,
+                                    selectionnee,
+                                    ligne.tiers.as_deref().unwrap_or(""),
+                                );
+                            });
+                            rangee.col(|ui| {
+                                etiquette_selectionnable(ui, selectionnee, &ligne.libelle);
+                            });
+                            rangee.col(|ui| {
+                                etiquette_selectionnable(ui, selectionnee, &ligne.categories);
+                            });
+                            rangee.col(|ui| {
+                                let texte = ligne
+                                    .montant
+                                    .map(fmt::eur)
+                                    .unwrap_or_else(|| "…".to_string());
+                                etiquette_selectionnable(
+                                    ui,
+                                    selectionnee,
+                                    RichText::new(texte).strong(),
+                                );
+                            });
+                            rangee.col(|ui| {
+                                if !ligne.tags.is_empty() {
+                                    etiquette_selectionnable(
+                                        ui,
+                                        selectionnee,
+                                        format!("#{}", ligne.tags.join(" #")),
+                                    );
+                                }
+                            });
+                        });
+                    }
+                    if lignes.is_empty() {
+                        corps.row(24.0, |mut rangee| {
+                            rangee.col(|ui| {
+                                ui.label("Aucune écriture pour ces filtres.");
+                            });
+                            for _ in 0..6 {
+                                rangee.col(|_ui| {});
+                            }
+                        });
                     }
                 });
-            }
         });
 
     // 5. Contrôles de pagination.
@@ -276,7 +286,7 @@ fn panneau_filtres(ui: &mut egui::Ui, etat: &mut UiState) {
             ui.label("Compte :");
             ui.add(
                 egui::TextEdit::singleline(&mut etat.compte)
-                    .desired_width(260.0)
+                    .desired_width(300.0)
                     .hint_text("Expenses:…"),
             );
             ui.label("Tag :");

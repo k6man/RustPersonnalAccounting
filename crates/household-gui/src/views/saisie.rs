@@ -107,6 +107,7 @@ pub fn afficher(
                     &mut etat.brouillon.tiers,
                     &propositions,
                     "ex. Carrefour",
+                    320.0,
                 );
                 ui.end_row();
 
@@ -211,6 +212,7 @@ fn lignes_postings(ui: &mut egui::Ui, etat: &mut UiState, comptes: &[InfoCompte]
                     &mut nouveau_compte,
                     &propositions,
                     "Assets:… / Expenses:…",
+                    460.0,
                 );
                 etat.brouillon.lignes[numero].compte = nouveau_compte;
 
@@ -264,12 +266,19 @@ fn lignes_postings(ui: &mut egui::Ui, etat: &mut UiState, comptes: &[InfoCompte]
 }
 
 /// Champ texte avec liste de suggestions cliquables sous le champ quand il
-/// a le focus.
-fn champ_suggestions(ui: &mut egui::Ui, texte: &mut String, propositions: &[String], indice: &str) {
+/// a le focus. La largeur dépend du contenu attendu (un compte complet
+/// n'a pas la même longueur qu'un tiers).
+fn champ_suggestions(
+    ui: &mut egui::Ui,
+    texte: &mut String,
+    propositions: &[String],
+    indice: &str,
+    largeur: f32,
+) {
     ui.vertical(|ui| {
         let reponse = ui.add(
             egui::TextEdit::singleline(texte)
-                .desired_width(320.0)
+                .desired_width(largeur)
                 .hint_text(indice),
         );
         if reponse.has_focus() {

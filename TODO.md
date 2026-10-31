@@ -45,11 +45,20 @@ _Passe UI « largeurs » (2026-10-30) — terminée, commit de cette passe ci-de
 **Détail des réglages appliqués** : colonnes budget `exact(56/72/76)` →
 `auto().at_least(52/88/84)` + remainder `.at_least(180)` ; champ d'édition de cellule
 `desired_width(f32::INFINITY)` ; historique Git `exact(76/110/150)` →
-`auto().at_least(80/120/140)` ; filtres journal 180→240 / 200→260 / 110→130, montants
+`auto().at_least(80/120/140)` ; filtres journal 180→240 / 200→300 / 110→130, montants
 90→110, dates 105→130 ; saisie libellé/tags/liens 340→420, tiers 240→320, montant
 120→150, date 110→130 ; dashboard jauges : texte sorti de la barre + barre pleines
 largeur, barres carte budget 180→240 ; fenêtre 1200×760 → 1300×800 (min 980×620 →
-1060×680). `cargo check`/fmt/clippy/tests/`rledger check` verts après passe.
+1060×680). **Second tour (retour utilisateur : Journal + Saisie)** :
+- Tableau du journal enroulé dans `ScrollArea::horizontal().auto_shrink([false; 2])`
+  (mêmes causes que la grille budget : colonnes auto longues, pas de scroll
+  horizontal dans `TableBuilder`, remainder du libellé qui s'écroule à 0) + minima
+  `at_least` sur toutes les colonnes (date 88, tiers 100, libellé remainder 150,
+  comptes 160, montant 90, tags 120).
+- Champ compte de la Saisie élargi à 460 px : `champ_suggestions` devient
+  paramétrable en largeur (un compte complet ≠ un tiers).
+- Filtre compte du journal 260→300 (préfixe complet attendu).
+`cargo check`/fmt/clippy/tests/`rledger check` verts après passe.
 
 ## À faire
 
