@@ -58,6 +58,10 @@ largeur, barres carte budget 180→240 ; fenêtre 1200×760 → 1300×800 (min 9
 - Champ compte de la Saisie élargi à 460 px : `champ_suggestions` devient
   paramétrable en largeur (un compte complet ≠ un tiers).
 - Filtre compte du journal 260→300 (préfixe complet attendu).
+- Cartes « Soldes des comptes » : chaque carte devient un `Frame::group` teinté
+  avec `ui.set_min_size(210×…)` (egui 0.37 : `Frame` n'a pas de `min_size`,
+  passer par `Ui::set_min_size` dans le contenu) —montant en taille heading
+  jamais contraint, taille de carte stable.
 `cargo check`/fmt/clippy/tests/`rledger check` verts après passe.
 
 ## À faire

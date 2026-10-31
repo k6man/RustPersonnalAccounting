@@ -26,14 +26,16 @@ fn cartes_soldes(ui: &mut egui::Ui, donnees: &DashboardData) {
     ui.heading("Soldes des comptes");
     ui.add_space(4.0);
 
+    // Cartes en cadres à largeur garantie : le contenu (titre + montant en
+    // taille heading) ne subit jamais de contrainte de cellule.
     egui::Grid::new("soldes")
-        .spacing([24.0, 6.0])
+        .spacing([12.0, 6.0])
         .show(ui, |ui| {
             carte_solde(ui, "Compte courant", donnees.solde_cc);
             carte_solde(ui, "Livret A", donnees.solde_livret_a);
             carte_solde(ui, "LDD", donnees.solde_ldd);
+            ui.end_row();
         });
-
     if !donnees.jauges.is_empty() {
         ui.add_space(10.0);
         ui.label(RichText::new("Plafonds d'épargne").strong());
@@ -80,17 +82,26 @@ fn cartes_soldes(ui: &mut egui::Ui, donnees: &DashboardData) {
 }
 
 fn carte_solde(ui: &mut egui::Ui, titre: &str, solde: Option<rust_decimal::Decimal>) {
-    ui.vertical(|ui| {
-        ui.label(RichText::new(titre).weak());
-        match solde {
-            Some(solde) => {
-                ui.label(RichText::new(fmt::eur(solde)).heading().strong());
-            }
-            None => {
-                ui.label("—");
-            }
-        }
-    });
+    egui::Frame::group(ui.style())
+        .fill(ui.visuals().faint_bg_color)
+        .inner_margin(10.0)
+        .show(ui, |ui| {
+            // Largeur minimum explicite : le montant en taille heading
+            // (« 18 450,12 € ») a de la marge, la carte garde une taille
+            // stable quel que soit son contenu.
+            ui.set_min_size(egui::vec2(210.0, 0.0));
+            ui.vertical(|ui| {
+                ui.label(RichText::new(titre).weak().small());
+                match solde {
+                    Some(solde) => {
+                        ui.label(RichText::new(fmt::eur(solde)).heading().strong());
+                    }
+                    None => {
+                        ui.label(RichText::new("—").heading().weak());
+                    }
+                }
+            });
+        });
 }
 
 /// Patrimoine net + carte budget vs réel du mois courant.
