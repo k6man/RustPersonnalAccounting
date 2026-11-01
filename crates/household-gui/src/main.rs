@@ -2,6 +2,8 @@
 //!
 //! Usage : `compta-foyer [chemin/vers/main.beancount]` (défaut :
 //! `ledger/main.beancount` relatif au répertoire courant).
+//! Pour du test : `COMPTA_ECRAN=journal|saisie|budget|rapports|git` choisit
+//! l'onglet initial (défaut : tableau de bord).
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 

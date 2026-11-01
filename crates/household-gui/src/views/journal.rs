@@ -272,41 +272,47 @@ fn etiquette_selectionnable(
     ui.add(egui::Label::new(texte_widget));
 }
 
-/// Les comptes de catégorisation viennent du view-model (`ligne.categories`).
+/// Les filtres, paires label + champ organisées en deux rangées.
+///
+/// NB : pas de `egui::Grid` — egui 0.37 borne `desired_width` d'un
+/// `TextEdit` par la largeur allouée à la cellule, qui ne grandit pas
+/// (les filtres restaient coincés à ~interact_size ≈ 40 px).
 fn panneau_filtres(ui: &mut egui::Ui, etat: &mut UiState) {
-    egui::Grid::new("filtres-journal")
-        .spacing([8.0, 4.0])
-        .show(ui, |ui| {
-            ui.label("Recherche :");
-            ui.add(
-                egui::TextEdit::singleline(&mut etat.texte)
-                    .desired_width(240.0)
-                    .hint_text("tiers, libellé…"),
-            );
-            ui.label("Compte :");
-            ui.add(
-                egui::TextEdit::singleline(&mut etat.compte)
-                    .desired_width(300.0)
-                    .hint_text("Expenses:…"),
-            );
-            ui.label("Tag :");
-            ui.add(
-                egui::TextEdit::singleline(&mut etat.tag)
-                    .desired_width(130.0)
-                    .hint_text("#courses"),
-            );
-            ui.end_row();
-
-            ui.label("Du :");
-            champ_date(ui, &mut etat.date_min);
-            ui.label("au :");
-            champ_date(ui, &mut etat.date_max);
-            ui.label("Montant ≥ :");
-            ui.add(egui::TextEdit::singleline(&mut etat.montant_min).desired_width(110.0));
-            ui.label("≤ :");
-            ui.add(egui::TextEdit::singleline(&mut etat.montant_max).desired_width(110.0));
-            ui.end_row();
-        });
+    // Deux rangées explicites : egui 0.37 borne `desired_width` d'un
+    // `TextEdit` par la largeur de sa cellule dans un `Grid`, et le repli
+    // libre d'`horizontal_wrapped` donnait un alignement chaotique en fin de
+    // ligne. Même motif que la saisie et le dashboard (rangées horizontales).
+    ui.horizontal(|ui| {
+        ui.label("Recherche :");
+        ui.add(
+            egui::TextEdit::singleline(&mut etat.texte)
+                .desired_width(240.0)
+                .hint_text("tiers, libellé…"),
+        );
+        ui.label("Compte :");
+        ui.add(
+            egui::TextEdit::singleline(&mut etat.compte)
+                .desired_width(300.0)
+                .hint_text("Expenses:…"),
+        );
+        ui.label("Tag :");
+        ui.add(
+            egui::TextEdit::singleline(&mut etat.tag)
+                .desired_width(130.0)
+                .hint_text("#courses"),
+        );
+    });
+    ui.add_space(2.0);
+    ui.horizontal(|ui| {
+        ui.label("Du :");
+        champ_date(ui, &mut etat.date_min);
+        ui.label("au :");
+        champ_date(ui, &mut etat.date_max);
+        ui.label("Montant ≥ :");
+        ui.add(egui::TextEdit::singleline(&mut etat.montant_min).desired_width(110.0));
+        ui.label("≤ :");
+        ui.add(egui::TextEdit::singleline(&mut etat.montant_max).desired_width(110.0));
+    });
     ui.add_space(2.0);
     // Indices de saisie (dates invalides en rouge).
     let dates_invalides = (!etat.date_min.trim().is_empty()

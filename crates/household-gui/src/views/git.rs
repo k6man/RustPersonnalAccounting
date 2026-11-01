@@ -81,6 +81,10 @@ pub fn afficher(ui: &mut egui::Ui, git: &GitDonnees, etat: &mut UiState) -> Opti
                 .strong(),
             );
             egui_extras::TableBuilder::new(ui)
+                // Deux tables dans le même Ui : leur id par défaut dérive de
+                // `ui.scope_id()` + "__table_state" → collision (egui peint
+                // des warnings rouges). Sel unique par table.
+                .id_salt("fichiers-git")
                 .striped(true)
                 .column(egui_extras::Column::remainder())
                 .column(egui_extras::Column::auto().at_least(160.0))
@@ -128,7 +132,9 @@ pub fn afficher(ui: &mut egui::Ui, git: &GitDonnees, etat: &mut UiState) -> Opti
             ui.add(
                 egui::TextEdit::singleline(&mut etat.message)
                     .hint_text("ledger: …")
-                    .desired_width(f32::INFINITY),
+                    // Largeur fixe : `f32::INFINITY` dilate un ScrollArea
+                    // vertical à l'infini (cf. dashboard.rs, jauges).
+                    .desired_width(480.0),
             );
             ui.add_space(4.0);
             if ui
@@ -146,6 +152,7 @@ pub fn afficher(ui: &mut egui::Ui, git: &GitDonnees, etat: &mut UiState) -> Opti
         ui.add_space(10.0);
         ui.label(RichText::new("Historique (commits touchant le ledger)").strong());
         egui_extras::TableBuilder::new(ui)
+            .id_salt("historique-git")
             .striped(true)
             .column(egui_extras::Column::auto().at_least(80.0))
             .column(egui_extras::Column::auto().at_least(120.0))

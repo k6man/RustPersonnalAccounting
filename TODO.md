@@ -13,14 +13,66 @@
 
 **État du projet** : **jalons 1→7 terminés — projet complet (v0.1.0)**. Ledger d'exemple
 validé (`rledger check` ✓), fmt/clippy `-D warnings`/tests verts (76 tests).
-Passe UI « largeurs » appliquée (2026-10-30).
+Passe UI « largeurs » appliquée (2026-10-30), **puis passe de vérification visuelle**
+(captures d'écran de chaque onglet, 2026-10-31) avec corrections.
 **Prochaine action : usage réel** (saisie quotidienne, budgets 2027 via l'éditeur).
 
 ---
 
 ## En cours
 
-_Passe UI « largeurs » (2026-10-30) — terminée, commit de cette passe ci-dessous._
+_Passe UI « vérification visuelle » (2026-10-31) — terminée, commit ci-dessous._
+
+**Méthode** : app lancée depuis le shell sur chaque onglet (`COMPTA_ECRAN=<tab>`),
+capture `screencapture` après 6 s. La fenêtre d'un lancement via `open` panique dans
+winit avant d'apparaître — lancer directement `./target/debug/compta-foyer`. Le
+SIGTERM d'une app LaunchServices génère un dialogue de crash qui vole le premier plan
+→ `kill -9` + `pkill -9 -f UserNotificationCenter` en début/fin d'itération. NB :
+l'écran Mac peut se verrouiller entre deux itérations — `caffeinate -dims` pour la
+durée d'une campagne de captures.
+
+**Deux bugs trouvés par cette passe, hors dimensionnement statique** :
+- **Courbe du tableau de bord silencieusement vide (cause racine trouvée par
+  instrumentations `eprintln`, retirées après diagnostic)** : `desired_width(
+  f32::INFINITY)` (jauges du dashboard, champ message de l'écran Git) dans un
+  `ScrollArea::vertical` **dilate la largeur du contenu du scroll à l'infini**
+  (egui 0.37) ; le `Plot` du dashboard grandit sur `Ui::available_width()` → il
+  alloue un `plot_rect` infini (constaté : `[[52.7 571.5] - [inf 777.5]]`) →
+  échelle X infinie, sommets/tessellation à l'infini, **rien ne se peint** (seul
+  l'axe Y sur la tranche de gauche reste). Correctif : largeurs fixes
+  (jauges 240 px, champ git 480 px) ; la courbe, la grille et les libellés X
+  reviennent. Réplique `examples/plot_sanity.rs` fait le tour (montage +
+  formateurs OK) puis **supprimé** ; `examples/dump_courbe.rs` gardé comme
+  outil de dumping des données de la courbe.
+- **Collision d'IDs de widgets aux captures d'écran de l'écran Git** (egui peint
+  en rouge « First/Second use of Table/ScrollArea/widget ID… ») : deux
+  `TableBuilder` dans le même `Ui` partagent l'id par défaut
+  `ui.scope_id().with("__table_state")` (et les ids dérivés de leurs
+  `ScrollArea` internes) → `id_salt` explicites `fichiers-git` /
+  `historique-git`.
+
+**Règle egui 0.37 complétée** : `desired_width(f32::INFINITY)` est interdit **aussi
+bien dans un `egui::Grid` que dans tout contenu de `ScrollArea::vertical`** —
+dans une cellule de table ou un slot de layout horizontal réel (parent fini),
+il remplit le rect ; sinon, tout widget à largeur infinie dilate le conteneur.
+
+**Corrections de dimensionnement vérifiées à la capture** (six onglets) :
+- Tableau de bord : carte « Patrimoine net » en pile verticale (plus de
+  `Grid`, le montant heading se repliait sur 3 lignes) ; jauges à largeur fixe
+  240 px ; courbe peinte (X = libellés de mois via formateur, Y via `fmt::nombre`,
+  couleur explicite & épaisseur 2.0, id stable `courbe-epargne`).
+- Journal :angles `panneau_filtres` en **deux rangées explicites** `ui.horizontal`
+  (recherche/compte/tag puis dates/montants) — le repli libre donnait un alignement
+  chaotique en fin de ligne ; tableau enroulé horizontalement OK.
+- Saisie : en-tête et lignes de postings en rangées `ui.horizontal` (plus de
+  `Grid` — TextEdit coincide à ~interact_size ≈ 40 px dans un Grid, cf.
+  `egui-0.37.0/src/grid.rs::available_rect` + `text_edit/builder.rs:572`) ;
+  suppression des postings différée après la boucle (emprunt) ; « ＋ ligne » et
+  « équilibrée ✓ » sur une ligne, plus de superposition.
+
+`just check` vert (fmt + clippy `-D warnings` + 76 tests + `rledger check`).
+
+_Passe UI « largeurs » (2026-10-30) — archivée ci-dessous._
 
 **Découvertes egui 0.37 de la passe largeurs** (source de vérité :
 `~/.cargo/registry/…/egui_extras-0.37.0/src/{table,sizing}.rs`) :
@@ -37,10 +89,14 @@ _Passe UI « largeurs » (2026-10-30) — terminée, commit de cette passe ci-de
 - Colonnes à contenu variable : `Column::auto().at_least(min)` (exact fige et coupe) ;
   `at_least` suit la même voie que pour les cellules de la grille.
 - `desired_width(f32::INFINITY)` : OK dans une cellule de table ou un slot de layout
-  horizontal (remplit le rect réel) ; **interdit dans un `egui::Grid`** (mesure à 2
-  passes, peut dépasser la fenêtre) — dans les grilles, élargir les valeurs fixes.
+  horizontal à parent fini (remplit le rect réel) ; **interdit dans un `egui::Grid`**
+  (mesure à 2 passes, peut dépasser la fenêtre) et **interdit dans un
+  `ScrollArea::vertical`** (dilate la largeur du contenu à l'infini — cf. la passe
+  de vérification visuelle, tracé du dashboard vide). Dans les grilles et scrolls,
+  élargir les valeurs fixes.
 - `ProgressBar.text(...)` est **tronqué à la largeur de la barre** : mettre le texte
-  dans un `ui.label` avant la barre, et la barre en `desired_width(f32::INFINITY)`.
+  dans un `ui.label` avant la barre, et la barre à **largeur fixe** (la pleine
+  largeur infinie a causé le bug du ScrollArea, cf. ci-dessus).
 
 **Détail des réglages appliqués** : colonnes budget `exact(56/72/76)` →
 `auto().at_least(52/88/84)` + remainder `.at_least(180)` ; champ d'édition de cellule

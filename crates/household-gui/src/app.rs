@@ -46,6 +46,22 @@ impl Onglet {
             Self::Git => "Git",
         }
     }
+
+    /// Onglet choisi par la variable d'environnement `COMPTA_ECRAN`
+    /// (`dashboard|journal|saisie|budget|rapports|git`) — affordance de
+    /// test, l'app démarre sinon sur le tableau de bord.
+    #[must_use]
+    pub fn depuis_env(var: Option<&str>) -> Self {
+        match var.map(str::trim).map(str::to_ascii_lowercase).as_deref() {
+            Some("journal") => Self::Journal,
+            Some("saisie") => Self::Saisie,
+            Some("budget") => Self::Budget,
+            Some("rapports") => Self::Rapports,
+            Some("git") => Self::Git,
+            Some("dashboard") | Some("tableau") => Self::TableauDeBord,
+            _ => Self::TableauDeBord,
+        }
+    }
 }
 
 /// L'application.
@@ -85,7 +101,8 @@ impl FoyerApp {
     pub fn new(cc: &eframe::CreationContext<'_>, main: PathBuf) -> Self {
         let (cmd_tx, outcome_rx) = crate::worker::demarrer(cc.egui_ctx.clone(), main.clone());
         let watcher = crate::worker::demarrer_watcher(&main, cmd_tx.clone());
-        Self {
+        let onglet = Onglet::depuis_env(std::env::var("COMPTA_ECRAN").ok().as_deref());
+        let app = Self {
             main,
             cmd_tx,
             outcome_rx,
@@ -94,14 +111,19 @@ impl FoyerApp {
             echec: None,
             en_chargement: true,
             flash: None,
-            onglet: Onglet::TableauDeBord,
+            onglet,
             journal: crate::views::journal::UiState::new(),
             saisie: crate::views::saisie::UiState::nouveau(crate::worker::aujourd_hui()),
             budget: crate::views::budget::UiState::nouveau(crate::worker::aujourd_hui().year()),
             git: crate::views::git::UiState::nouveau(),
             git_donnees: None,
             config: crate::config::Config::charger(),
+        };
+        // Écran Git : même arme que l'entrée par l'onglet (statut à la volée).
+        if app.onglet == Onglet::Git {
+            app.cmd_tx.send(Command::GitStatut).ok();
         }
+        app
     }
 
     fn demander_rechargement(&mut self) {

@@ -57,16 +57,23 @@ fn cartes_soldes(ui: &mut egui::Ui, donnees: &DashboardData) {
                 // Le texte vit HORS de la barre : jamais tronqué par sa
                 // largeur, quelle que soit la fenêtre.
                 ui.label(texte);
-                let barre = egui::ProgressBar::new(fraction as f32).fill(couleur);
+                // Largeur FIÉE : `desired_width(f32::INFINITY)` ici dilate la
+                // largeur du contenu du `ScrollArea::vertical` à l'infini
+                // (egui 0.37), ce qui peut faire basculer d'autres widgets
+                // dont les tailles dépendent de la largeur disponible (le
+                // `Plot` de la courbe allouait un rect infini → tracé vide).
+                let barre = egui::ProgressBar::new(fraction as f32)
+                    .fill(couleur)
+                    .desired_width(240.0);
                 if jauge.etat == EtatJauge::Depassement {
                     // Dépassement : visuellement bloquant (cadre rouge).
                     egui::Frame::group(ui.style())
                         .stroke(egui::Stroke::new(2.0, couleur))
                         .show(ui, |ui| {
-                            ui.add(barre.desired_width(f32::INFINITY));
+                            ui.add(barre);
                         });
                 } else {
-                    ui.add(barre.desired_width(f32::INFINITY));
+                    ui.add(barre);
                 }
             });
         }
@@ -105,23 +112,26 @@ fn carte_solde(ui: &mut egui::Ui, titre: &str, solde: Option<rust_decimal::Decim
 }
 
 /// Patrimoine net + carte budget vs réel du mois courant.
+///
+/// Pas de `egui::Grid` ici : la première cellule était écrasée par la carte
+/// budget (largeur mesurée au plus juste, le montant heading se repliait sur
+/// trois lignes). Pile verticale + carte à largeur garantie.
 fn patrimoine_et_budget(ui: &mut egui::Ui, donnees: &DashboardData) {
-    egui::Grid::new("patrimoine-budget")
-        .spacing([32.0, 6.0])
+    carte_patrimoine(ui, donnees.patrimoine_net);
+    ui.add_space(8.0);
+    ui.label(RichText::new(format!("Budget vs réel — {}", donnees.budget_mois_label)).weak());
+    carte_budget(ui, donnees);
+}
+
+fn carte_patrimoine(ui: &mut egui::Ui, patrimoine: rust_decimal::Decimal) {
+    egui::Frame::group(ui.style())
+        .fill(ui.visuals().faint_bg_color)
+        .inner_margin(10.0)
         .show(ui, |ui| {
+            ui.set_min_size(egui::vec2(210.0, 0.0));
             ui.vertical(|ui| {
-                ui.label(RichText::new("Patrimoine net").weak());
-                ui.label(
-                    RichText::new(fmt::eur(donnees.patrimoine_net))
-                        .heading()
-                        .strong(),
-                );
-            });
-            ui.vertical(|ui| {
-                ui.label(
-                    RichText::new(format!("Budget vs réel — {}", donnees.budget_mois_label)).weak(),
-                );
-                carte_budget(ui, donnees);
+                ui.label(RichText::new("Patrimoine net").weak().small());
+                ui.label(RichText::new(fmt::eur(patrimoine)).heading().strong());
             });
         });
 }
@@ -168,6 +178,13 @@ fn carte_budget(ui: &mut egui::Ui, donnees: &DashboardData) {
 }
 
 /// Courbe du patrimoine net (egui_plot), X = index du mois.
+///
+/// NB : le `Plot` regarde la largeur disponible de son `Ui` pour se
+/// dimensionner ; une largeur infinie en amont (widget à
+/// `desired_width(f32::INFINITY)` dans le même `ScrollArea`, cf. les jauges
+/// ci-dessus) le fait allouer un rect infini → sommets peints à l'infini →
+/// tracé silencieusement vide. On garde donc toute largeur qui provient du
+/// contenu de ce ScrollArea finie.
 fn courbe_epargne(ui: &mut egui::Ui, donnees: &DashboardData) {
     ui.add_space(10.0);
     ui.label(RichText::new("Patrimoine net, mois par mois").strong());
@@ -195,7 +212,11 @@ fn courbe_epargne(ui: &mut egui::Ui, donnees: &DashboardData) {
                 .unwrap_or_default()
         })
         .show(ui, |plot_ui| {
-            plot_ui.line(Line::new("Patrimoine", PlotPoints::new(points)));
+            plot_ui.line(
+                Line::new("Patrimoine", PlotPoints::new(points))
+                    .color(Color32::from_rgb(0x4f, 0x9f, 0xff))
+                    .width(2.0),
+            );
         });
 }
 

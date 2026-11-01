@@ -75,66 +75,69 @@ pub fn afficher(
         ui.add_space(6.0);
 
         // --- En-tête de transaction -------------------------------------
-        egui::Grid::new("saisie-entete")
-            .spacing([10.0, 4.0])
-            .show(ui, |ui| {
-                ui.label("Date :");
-                let date_valide = date_optionnelle(&etat.brouillon.date).is_some();
-                champ_date(ui, &mut etat.brouillon.date, date_valide);
+        // NB : pas de `egui::Grid` ici — egui 0.37 borne `desired_width`
+        // d'un `TextEdit` par la largeur allouée à sa cellule, qui reste
+        // collée à la valeur du frame précédent (~40 px). Rangées
+        // horizontales explicites à la place.
+        ui.horizontal(|ui| {
+            ui.label("Date :");
+            let date_valide = date_optionnelle(&etat.brouillon.date).is_some();
+            champ_date(ui, &mut etat.brouillon.date, date_valide);
+            ui.add_space(14.0);
+            ui.label("État :");
+            if ui
+                .selectable_label(etat.brouillon.flag == '*', "* pointée")
+                .clicked()
+            {
+                etat.brouillon.flag = '*';
+            }
+            if ui
+                .selectable_label(etat.brouillon.flag == '!', "! en attente")
+                .clicked()
+            {
+                etat.brouillon.flag = '!';
+            }
+        });
+        ui.add_space(4.0);
 
-                ui.label("État :");
-                ui.horizontal(|ui| {
-                    if ui
-                        .selectable_label(etat.brouillon.flag == '*', "* pointée")
-                        .clicked()
-                    {
-                        etat.brouillon.flag = '*';
-                    }
-                    if ui
-                        .selectable_label(etat.brouillon.flag == '!', "! en attente")
-                        .clicked()
-                    {
-                        etat.brouillon.flag = '!';
-                    }
-                });
-                ui.end_row();
+        // Tiers avec suggestions (fréquence).
+        ui.horizontal(|ui| {
+            ui.label("Tiers :");
+            let propositions = completer_payees(payees, &etat.brouillon.tiers, 6);
+            champ_suggestions(
+                ui,
+                &mut etat.brouillon.tiers,
+                &propositions,
+                "ex. Carrefour",
+                320.0,
+            );
+        });
+        ui.add_space(4.0);
 
-                // Tiers avec suggestions (fréquence).
-                ui.label("Tiers :");
-                let propositions = completer_payees(payees, &etat.brouillon.tiers, 6);
-                champ_suggestions(
-                    ui,
-                    &mut etat.brouillon.tiers,
-                    &propositions,
-                    "ex. Carrefour",
-                    320.0,
-                );
-                ui.end_row();
-
-                ui.label("Libellé :");
-                ui.add(
-                    egui::TextEdit::singleline(&mut etat.brouillon.libelle)
-                        .desired_width(420.0)
-                        .hint_text("ex. Courses de la semaine"),
-                );
-                ui.end_row();
-
-                ui.label("Tags :");
-                ui.add(
-                    egui::TextEdit::singleline(&mut etat.brouillon.tags)
-                        .desired_width(420.0)
-                        .hint_text("#courses #weekend"),
-                );
-                ui.end_row();
-
-                ui.label("Liens :");
-                ui.add(
-                    egui::TextEdit::singleline(&mut etat.brouillon.liens)
-                        .desired_width(420.0)
-                        .hint_text("^facture-042"),
-                );
-                ui.end_row();
-            });
+        ui.horizontal(|ui| {
+            ui.label("Libellé :");
+            ui.add(
+                egui::TextEdit::singleline(&mut etat.brouillon.libelle)
+                    .desired_width(420.0)
+                    .hint_text("ex. Courses de la semaine"),
+            );
+        });
+        ui.add_space(4.0);
+        ui.horizontal(|ui| {
+            ui.label("Tags :");
+            ui.add(
+                egui::TextEdit::singleline(&mut etat.brouillon.tags)
+                    .desired_width(420.0)
+                    .hint_text("#courses #weekend"),
+            );
+            ui.add_space(14.0);
+            ui.label("Liens :");
+            ui.add(
+                egui::TextEdit::singleline(&mut etat.brouillon.liens)
+                    .desired_width(420.0)
+                    .hint_text("^facture-042"),
+            );
+        });
 
         ui.add_space(8.0);
         ui.label(RichText::new("Écritures").strong());
@@ -191,48 +194,49 @@ pub fn afficher(
 
 /// Éditeur de lignes de postings : comptes avec autocomplétion, montants
 /// libres, équilibrage explicite de la contrepartie.
+///
+/// Pas de `egui::Grid` : egui 0.37 borne la largeur d'un `TextEdit` par la
+/// largeur allouée à la cellule, qui ne grandit pas (le champ resterait
+/// coincé à ~interact_size ≈ 40 px). Une rangée horizontale par posting.
 fn lignes_postings(ui: &mut egui::Ui, etat: &mut UiState, comptes: &[InfoCompte]) {
     let date = date_optionnelle(&etat.brouillon.date);
+    let mut suppression = Option::<usize>::None;
 
-    egui::Grid::new("saisie-postings")
-        .spacing([8.0, 3.0])
-        .show(ui, |ui| {
-            for numero in 0..etat.brouillon.lignes.len() {
-                let (compte_ok, montant_vide) = {
-                    let ligne = &etat.brouillon.lignes[numero];
-                    (ligne.compte.clone(), ligne.montant.is_empty())
-                };
-                // Compte + suggestions.
-                let propositions = date
-                    .map(|date| completer_comptes(comptes, &compte_ok, date, 6))
-                    .unwrap_or_default();
-                let mut nouveau_compte = compte_ok;
-                champ_suggestions(
-                    ui,
-                    &mut nouveau_compte,
-                    &propositions,
-                    "Assets:… / Expenses:…",
-                    460.0,
-                );
-                etat.brouillon.lignes[numero].compte = nouveau_compte;
-
-                // Montant (vide = équilibrage, marqué).
-                ui.add(
-                    egui::TextEdit::singleline(&mut etat.brouillon.lignes[numero].montant)
-                        .desired_width(150.0)
-                        .hint_text(if montant_vide {
-                            "= équilibrage"
-                        } else {
-                            "0.00 [DEVISE]"
-                        }),
-                );
-
-                if ui.small_button("✕").clicked() {
-                    etat.brouillon.lignes.remove(numero);
-                }
-                ui.end_row();
+    for (numero, ligne) in etat.brouillon.lignes.iter_mut().enumerate() {
+        let montant_vide = ligne.montant.is_empty();
+        // Compte + suggestions.
+        let propositions = date
+            .map(|date| completer_comptes(comptes, &ligne.compte, date, 6))
+            .unwrap_or_default();
+        ui.horizontal(|ui| {
+            champ_suggestions(
+                ui,
+                &mut ligne.compte,
+                &propositions,
+                "Assets:… / Expenses:…",
+                460.0,
+            );
+            // Montant (vide = équilibrage, marqué).
+            ui.add(
+                egui::TextEdit::singleline(&mut ligne.montant)
+                    .desired_width(150.0)
+                    .hint_text(if montant_vide {
+                        "= équilibrage"
+                    } else {
+                        "0.00 [DEVISE]"
+                    }),
+            );
+            if ui.small_button("✕").clicked() {
+                // On note la demande pour l'appliquer après la boucle
+                // (emprunt mutable en cours sur le brouillon).
+                suppression = Some(numero);
             }
         });
+        ui.add_space(3.0);
+    }
+    if let Some(numero) = suppression {
+        etat.brouillon.lignes.remove(numero);
+    }
 
     ui.horizontal(|ui| {
         if ui.small_button("＋ ligne").clicked() {
