@@ -17,15 +17,67 @@ Passe UI « largeurs » appliquée (2026-10-30), **puis passe de vérification v
 (captures d'écran de chaque onglet, 2026-10-31) avec corrections.
 **Revue de code Rust complète (2026-11-01)** : trois correctifs de fiabilité appliqués
 (drain du debounce, brouillon conservé au refus, `replace_transaction` atomique) —
-77 tests verts, `just check` ✓ ; reste au backlog « Revue de code » (À faire).
+reste au backlog « Revue de code » (À faire).
+**Fenêtre « Graphiques » (2026-11-01)** : 7ᵉ écran flottant implémenté (répartition,
+cascade annuelle, budget vs réel) — 80 tests verts, `just check` ✓ ; reste la
+vérification visuelle par captures (optionnelle) + commit.
 **Prochaine action : usage réel** (saisie quotidienne, budgets 2027 via l'éditeur).
 
 ---
 
 ## En cours
 
-_Revue de code Rust complète (2026-11-01) — correctifs #1/#2/#4 appliqués (77 tests
-verts, `just check` ✓), reste au backlog « Revue de code » (À faire)._
+_Fenêtre « Graphiques » — 7ᵉ écran flottant (2026-11-01) — code + tests terminés,
+`just check` vert (80 tests) ; restent les captures `COMPTA_ECRAN=graphes`
+(optionnel) et le commit._
+
+**Décisions tranchées avec la maîtresse d'ouvrage** : une seule fenêtre « Graphiques »
+avec des mini-onglets internes (pas une fenêtre par graphe) ; trois graphes
+retenus — répartition des dépenses (bascule année / mois, défaut année),
+waterfall annuel, budget vs réel du mois. **Waterfall sans double-compte** :
+l'identité comptable est Revenus − Dépenses = Δ patrimoine ; l'épargne nette
+n'est **pas** additive (intérêts comptés dans les revenus, transferts
+Assets→Assets s'annulés) → 3 barres d'identité + la barre « Épargne (info) »
+séparée. Ligne de base du Δ patrimoine = fin N−1 via `balances_at(2025-12-31)
+fin de journée` (ouverture du ledger au 2025-01-01). Golden : Δ = 36 946,87 −
+32 014,71 = **4 932,16 €**. Position dans `Onglet::TOUS` : Graphiques avant
+Git → Ctrl+6 = Graphiques, Ctrl+7 = Git. Pas de donut : egui_plot 0.38 n'a pas
+de `Pie` (vérifié dans les sources épinglées).
+
+**Implémentation** :
+- `viewmodel.rs` : `GraphesData` (année, mois, `repartition_annee/mois` top 8 +
+  « Autres (N postes) », `cascade: CascadeAnnee`), `TOP_CATEGORIES = 8` ;
+  helpers purs `repartition()` (filtre zéros, tri `Reverse`, agrégat Autres),
+  `cascade()` (agrégats Rapports + Δ patrimoine aux deux bornes), 
+  `soldes_en_map()` ; champ `graphiques: GraphesData` dans `UiData`. Budget vs
+  réel **relu** depuis `DashboardData.budget_mois` (même tri « plus tendus en
+  tête » — zéro duplication).
+- `views/graphiques.rs` (présentation pure, `UiState` gardé entre ouvertures) :
+  sélecteur `selectable_value` + **un seul `Plot` actif à la fois** (zéro
+  collision d'IDs, `id_salt` stables) ; répartition = barres horizontales
+  peintes à la main `rect_filled(rect, 3u8, couleur)` (largeur fixe 320 px —
+  piège egui 0.37 de la courbe vide) + `fmt::eur`/`fmt::pourcent` ; cascade =
+  `BarChart` de 4 charts colorés + formateurs d'axes (X = libellés, Y =
+  `fmt::nombre` via `Decimal::try_from` — f64 seulement au tracé) ; budget vs
+  réel = 2 `BarChart` groupés + rappel des montants sous le tracé (rouge si
+  dépassement).
+- `app.rs` : variante `Onglet::Graphiques`, `TOUS: [Onglet; 7]`, `TOUCHES` +
+  `Num7`, texte « Ctrl+1 à Ctrl+7 », `depuis_env` accepte `graphiques` /
+  `graphes`, champ `graphiques: UiState` + bras `vue()`.
+- Tests `tests/graphes.rs` (3) : identité comptable **exacte** Revenus −
+  Dépenses == Δ patrimoine (== golden 4 932,16), couverture répartition
+  (somme == `depenses_annee()` / total du mois, tri décroissant, zéros
+  filtrés), cohérence budget vs réel ↔ cellules de la grille + tri tension.
+  Aucun test sur le ledger réel sans scratch — ici lecture seule, comme
+  `tests/viewmodel.rs`.
+
+**Validation** : `just check` vert ✓ (fmt sur les tests corrigé au passage ;
+clippy : `sort_unstable_by_key(Reverse)` et un borrow inutile dans le bras
+`vue()`). Pas de surprise comptable : l'identité du waterfall est passée
+**exacte** au premier essai.
+
+_Revue de code Rust complète (2026-11-01) — correctifs #1/#2/#4 appliqués,
+#3/#5 restent au backlog « Revue de code » (À faire) — archivée ci-dessous._
 
 **Constat général** : code idiomatique solide — `Decimal`/`NaiveDate` de bout en bout
 vérifié, `thiserror` partout, séparation vues/view-model/logique pure réelle, writer

@@ -6,6 +6,7 @@
 pub mod budget;
 pub mod dashboard;
 pub mod git;
+pub mod graphiques;
 pub mod journal;
 pub mod rapports;
 pub mod saisie;

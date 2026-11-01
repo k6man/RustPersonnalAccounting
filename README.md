@@ -59,6 +59,12 @@ rledger check ledger/main.beancount   # validation ledger seule
   famille (disponible cumulé ; réglage en TOML local, jamais dans le ledger).
 - **Rapports** : dépenses par catégorie × mois (heatmap), comparaison N vs
   N−1 en barres, revenus, variation nette d'épargne, taux d'épargne.
+- **Graphiques** : un seul écran à trois mini-onglets — répartition des
+  dépenses en barres horizontales (bascule année / mois courant, top 8 +
+  agrégat « Autres »), cascade annuelle suivant l'**identité comptable**
+  Revenus − Dépenses = Δ patrimoine (l'épargne nette, non additive, est en
+  barre d'information à part — pas de double-compte des intérêts),
+  budget vs réel du mois en barres groupées. Raccourcis Ctrl+1 à Ctrl+7.
 - **Git** : statut des fichiers modifiés, résumé du diff, message de commit
   suggéré (`ledger: AAAA-MM — saisie/édition…`), historique filtré sur le
   ledger. Le commit valide le ledger avant d'indexer (ADR-002).

@@ -36,6 +36,8 @@ pub struct UiData {
     pub directives_budget: Vec<DirectiveBudget>,
     /// Données de l'écran Rapports (année courante + N−1 pour comparaison).
     pub rapports: RapportsData,
+    /// Données de l'écran Graphiques (répartition, cascade annuelle).
+    pub graphiques: GraphesData,
 }
 
 /// Données de l'écran **Rapports**, calculées une fois par chargement :
@@ -180,6 +182,42 @@ impl EtatJauge {
         }
         (f64::try_from(courant / plafond).unwrap_or(1.0)).clamp(0.0, 1.0)
     }
+}
+
+/// Données de l'écran « Graphiques » : répartition des dépenses (année /
+/// mois courant) et cascade annuelle. La partie budget vs réel est relue
+/// depuis [`DashboardData::budget_mois`] (même tri « plus tendus en tête »
+/// que la carte du tableau de bord — cohérence des deux écrans).
+#[derive(Debug, Clone)]
+pub struct GraphesData {
+    pub annee: i16,
+    /// Mois courant (1..=12), base des cellules de répartition mensuelle.
+    pub mois: u8,
+    /// Top catégories décroissant + agrégat « Autres (N postes) » — année.
+    pub repartition_annee: Vec<(String, Decimal)>,
+    /// Pareil pour le mois courant.
+    pub repartition_mois: Vec<(String, Decimal)>,
+    /// Cascade annuelle de l'exercice.
+    pub cascade: CascadeAnnee,
+}
+
+/// Cascade de l'année : **identité comptable** Revenus − Dépenses = Δ
+/// patrimoine (patrimoine fin N−1 contre fin de ledger ; l'Équité est stable
+/// en cours d'exercice, cf. ADR-003). L'épargne nette n'est pas additive —
+/// les intérêts sont déjà comptés dans les revenus et les transferts
+/// Assets→Assets s'annulent — elle est stockée ici comme barre
+/// d'**information** séparée (décision du 2026-11-01, pas de double-compte).
+#[derive(Debug, Clone)]
+pub struct CascadeAnnee {
+    /// Revenus de l'année (totaux du view-model Rapports).
+    pub revenus: Decimal,
+    /// Dépenses de l'année.
+    pub depenses: Decimal,
+    /// Δ patrimoine net : fin de ledger contre fin N−1 (Σ Assets − Σ
+    /// Liabilities, EUR, Equity exclu).
+    pub variation_patrimoine: Decimal,
+    /// Variation nette de l'épargne (née Rapports) — hors identité.
+    pub epargne: Decimal,
 }
 
 /// Une ligne « budget vs réel » du mois.
@@ -328,6 +366,18 @@ pub fn build(snapshot: &Snapshot, aujourdhui: NaiveDate) -> Result<UiData, Strin
     // Rapports : année courante + comparaison N−1.
     let annee_courante = aujourdhui.year();
     let rapports = rapports(&directives, &types, annee_courante);
+    let waterfall = cascade(snapshot, &types, &soldes, &rapports, annee);
+    let graphiques = GraphesData {
+        annee,
+        mois,
+        repartition_annee: repartition(&rapports.depenses_categories, None, TOP_CATEGORIES),
+        repartition_mois: repartition(
+            &rapports.depenses_categories,
+            Some(usize::from(mois) - 1),
+            TOP_CATEGORIES,
+        ),
+        cascade: waterfall,
+    };
     let budget_avertissements = grilles
         .get(&annee)
         .map(|grille| grille.warnings.clone())
@@ -356,8 +406,13 @@ pub fn build(snapshot: &Snapshot, aujourdhui: NaiveDate) -> Result<UiData, Strin
         grilles,
         directives_budget: directives_budget(&directives),
         rapports,
+        graphiques,
     })
 }
+
+/// Nombre de catégories affichées dans la répartition (le reste est
+/// agrégé en « Autres »).
+const TOP_CATEGORIES: usize = 8;
 
 /// Catégorie d'agrégation d'un compte : ses 2 premiers segments
 /// (`Expenses:Enfants`), ou le compte entier s'il en a moins.
@@ -487,6 +542,72 @@ fn directives_budget(directives: &[Directive]) -> Vec<DirectiveBudget> {
         .collect();
     out.sort_unstable_by(|a, b| a.date.cmp(&b.date).then_with(|| a.compte.cmp(&b.compte)));
     out
+}
+
+/// Cascade de l'exercice : agrégats du view-model Rapports + Δ patrimoine
+/// calculé sur les soldes (fin de ledger contre fin N−1, cf.
+/// [`CascadeAnnee`]).
+fn cascade(
+    snapshot: &Snapshot,
+    types: &AccountTypes,
+    soldes_fin: &BTreeMap<String, BTreeMap<String, Decimal>>,
+    rapports: &RapportsData,
+    annee: i16,
+) -> CascadeAnnee {
+    let debut_exercice = fin_de_mois(annee.checked_sub(1).unwrap_or(annee), 12);
+    let soldes_debut = snapshot
+        .balances_at(debut_exercice, household_core::Through::EndOfDay)
+        .map(soldes_en_map)
+        .unwrap_or_default();
+    CascadeAnnee {
+        revenus: rapports.revenus_annee(),
+        depenses: rapports.depenses_annee(),
+        variation_patrimoine: patrimoine_net(soldes_fin, types)
+            - patrimoine_net(&soldes_debut, types),
+        epargne: rapports.epargne_annee(),
+    }
+}
+
+/// Soldes par compte/devise depuis une liste de balances (un compte
+/// apparaît une fois).
+fn soldes_en_map(
+    balances: Vec<household_core::AccountBalance>,
+) -> BTreeMap<String, BTreeMap<String, Decimal>> {
+    balances
+        .into_iter()
+        .map(|solde| (solde.account, solde.amounts))
+        .collect()
+}
+
+/// Top `top` catégories décroissant ; les suivantes sont agrégées en
+/// « Autres (N postes) » pour que les parts affichées somment à 100 %.
+/// `colonne` : un seul mois (`Some(index 0..=11)`) ou l'année (`None`).
+#[must_use]
+fn repartition(
+    categories: &BTreeMap<String, [Decimal; 12]>,
+    colonne: Option<usize>,
+    top: usize,
+) -> Vec<(String, Decimal)> {
+    let mut lignes: Vec<(String, Decimal)> = categories
+        .iter()
+        .map(|(categorie, mois)| {
+            let total = match colonne {
+                Some(index) => mois.get(index).copied().unwrap_or_default(),
+                None => mois.iter().copied().sum(),
+            };
+            (categorie.clone(), total)
+        })
+        .filter(|(_, total)| !total.is_zero())
+        .collect();
+    lignes.sort_unstable_by_key(|ligne| std::cmp::Reverse(ligne.1));
+    if lignes.len() <= top {
+        return lignes;
+    }
+    let reste = lignes.len() - top;
+    let autres: Decimal = lignes[top..].iter().map(|(_, total)| *total).sum();
+    let mut limited: Vec<_> = lignes.into_iter().take(top).collect();
+    limited.push((format!("Autres ({reste} postes)"), autres));
+    limited
 }
 
 /// Le plan de comptes : opens + closes joints (bornes d'existence).

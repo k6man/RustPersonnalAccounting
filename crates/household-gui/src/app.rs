@@ -23,16 +23,18 @@ pub enum Onglet {
     Saisie,
     Budget,
     Rapports,
+    Graphiques,
     Git,
 }
 
 impl Onglet {
-    const TOUS: [Onglet; 6] = [
+    const TOUS: [Onglet; 7] = [
         Onglet::TableauDeBord,
         Onglet::Journal,
         Onglet::Saisie,
         Onglet::Budget,
         Onglet::Rapports,
+        Onglet::Graphiques,
         Onglet::Git,
     ];
 
@@ -43,6 +45,7 @@ impl Onglet {
             Self::Saisie => "Saisie",
             Self::Budget => "Budget",
             Self::Rapports => "Rapports",
+            Self::Graphiques => "Graphiques",
             Self::Git => "Git",
         }
     }
@@ -58,9 +61,9 @@ impl Onglet {
     }
 
     /// Écran demandé par la variable d'environnement `COMPTA_ECRAN`
-    /// (`dashboard|journal|saisie|budget|rapports|git`) — affordance de
-    /// test : seule cette fenêtre est ouverte au démarrage (sinon : le
-    /// tableau de bord).
+    /// (`dashboard|journal|saisie|budget|rapports|graphiques|git`) —
+    /// affordance de test : seule cette fenêtre est ouverte au démarrage
+    /// (sinon : le tableau de bord).
     #[must_use]
     pub fn depuis_env(var: Option<&str>) -> Option<Self> {
         match var.map(str::trim).map(str::to_ascii_lowercase).as_deref() {
@@ -68,6 +71,7 @@ impl Onglet {
             Some("saisie") => Some(Self::Saisie),
             Some("budget") => Some(Self::Budget),
             Some("rapports") => Some(Self::Rapports),
+            Some("graphiques") | Some("graphes") => Some(Self::Graphiques),
             Some("git") => Some(Self::Git),
             Some("dashboard") | Some("tableau") => Some(Self::TableauDeBord),
             _ => None,
@@ -106,6 +110,8 @@ pub struct FoyerApp {
     budget: crate::views::budget::UiState,
     /// État de l'écran Git (message de commit en cours d'édition).
     git: crate::views::git::UiState,
+    /// État de l'écran Graphiques (mini-onglet + période).
+    graphiques: crate::views::graphiques::UiState,
     /// Données git du dernier chargement (`None` tant que non demandées).
     git_donnees: Option<crate::worker::GitDonnees>,
     /// Préférences GUI (rollover par famille…) — TOML local, jamais le ledger.
@@ -143,6 +149,7 @@ impl FoyerApp {
             saisie: crate::views::saisie::UiState::nouveau(crate::worker::aujourd_hui()),
             budget: crate::views::budget::UiState::nouveau(crate::worker::aujourd_hui().year()),
             git: crate::views::git::UiState::nouveau(),
+            graphiques: crate::views::graphiques::UiState::nouveau(),
             git_donnees: None,
             config: crate::config::Config::charger(),
         };
@@ -362,7 +369,7 @@ impl eframe::App for FoyerApp {
                 });
             } else if self.fenetres_ouvertes.iter().all(|ouvert| !ouvert) {
                 ui.label(
-                    RichText::new("Aucun écran ouvert — Ctrl+1 à Ctrl+6 ou la barre au-dessus.")
+                    RichText::new("Aucun écran ouvert — Ctrl+1 à Ctrl+7 ou la barre au-dessus.")
                         .weak(),
                 );
             }
@@ -376,6 +383,7 @@ impl eframe::App for FoyerApp {
             egui::Key::Num4,
             egui::Key::Num5,
             egui::Key::Num6,
+            egui::Key::Num7,
         ];
         if self.donnees.is_some() {
             for (touche, onglet) in TOUCHES.into_iter().zip(Onglet::TOUS) {
@@ -536,6 +544,9 @@ impl FoyerApp {
             }
             Onglet::Rapports => {
                 crate::views::rapports::afficher(ui, &donnees.rapports);
+            }
+            Onglet::Graphiques => {
+                crate::views::graphiques::afficher(ui, donnees, &mut self.graphiques);
             }
             Onglet::Git => {
                 match &self.git_donnees {
