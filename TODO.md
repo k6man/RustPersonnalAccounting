@@ -12,14 +12,61 @@
 > - Les tâches découvertes en cours de route sont ajoutées immédiatement, pas perdues.
 
 **État du projet** : **jalons 1→7 terminés — projet complet (v0.1.0)**. Ledger d'exemple
-validé (`rledger check` ✓), fmt/clippy `-D warnings`/tests verts (76 tests).
+validé (`rledger check` ✓), fmt/clippy `-D warnings`/tests verts.
 Passe UI « largeurs » appliquée (2026-10-30), **puis passe de vérification visuelle**
 (captures d'écran de chaque onglet, 2026-10-31) avec corrections.
+**Revue de code Rust complète (2026-11-01)** : trois correctifs de fiabilité appliqués
+(drain du debounce, brouillon conservé au refus, `replace_transaction` atomique) —
+77 tests verts, `just check` ✓ ; reste au backlog « Revue de code » (À faire).
 **Prochaine action : usage réel** (saisie quotidienne, budgets 2027 via l'éditeur).
 
 ---
 
 ## En cours
+
+_Revue de code Rust complète (2026-11-01) — correctifs #1/#2/#4 appliqués (77 tests
+verts, `just check` ✓), reste au backlog « Revue de code » (À faire)._
+
+**Constat général** : code idiomatique solide — `Decimal`/`NaiveDate` de bout en bout
+vérifié, `thiserror` partout, séparation vues/view-model/logique pure réelle, writer
+avec garanties « pro » (scratch, atomique, verrou, revalidation). Panics localisés aux
+tests et à trois `expect` documentés. Trouvailles classées par gravité, numérotées —
+
+- [x] **#1 — Le drain du debounce jette les commandes utilisateur** (`worker.rs`) :
+  le drain post-`Reload` aspirait TOUTES les commandes en attente, écritures
+  comprises → une action utilisateur (Ecrire/Modifier/Supprimer/CelluleBudget)
+  arrivée pendant une rafale du watcher était perdue silencieusement (brouillon
+  déjà remis à zéro côté UI). **Correctif** : le drain ne jette plus que les
+  `Reload` redondants ; toute mutation rencontrée au passage est remise en fin de
+  file via un émetteur `remise_en_file` (clone de `cmd_tx`) et traitée dans
+  l'ordre, avec son propre résultat.
+- [x] **#2 — Brouillon perdu en cas de refus** (`app.rs`) : `envoyer_brouillon`
+  réinitialisait la saisie AVANT le résultat ; un `Refuse` (compte fermé,
+  pré-vérification, empreinte introuvable) laissait l'écran Saisie vide alors que
+  c'est précisément le cas où l'utilisateur veut corriger. **Correctif** : la remise
+  à zéro n'a lieu qu'à la réception de `Ecrit` (et seulement si une saisie était en
+  vol — un `Ecrit` budgétaire ne doit pas effacer un brouillon en cours) ; refus et
+  échec conservent la saisie ; garde `saisie_en_vol` contre le double-clic ;
+  `Annuler` déverrouille aussi la saisie.
+- [x] **#4 — Replace à date changée non atomique** (`household-core/writer.rs`) :
+  l'ancienne cascade `remove_transaction` + `append_transaction` = **deux** cycles
+  complets (verrou/precheck/écriture/revalidation) — un crash entre les deux
+  laissait la transaction supprimée sans jamais être réécrite. **Correctif** :
+  une seule `edit_ledger_files` avec deux `FileChange` pré-vérifiés et écrits
+  ensemble ; changement de jour **dans le même mois** = un seul patch composé
+  (retrait puis insertion triée). Test de régression
+  `replace_changement_de_date_une_seule_mutation` (intra-mois + inter-mois +
+  soldes).
+- [ ] **#3 — Empreinte ambiguë** : voir backlog ci-dessous.
+- [ ] **#5 — Pré-vérification trop stricte** : voir backlog ci-dessous.
+
+**Découverte nouvelle de cette passe** (à noter avec « écarts d'API jalon 2 ») :
+la comparaison de deux chemins de la source map exige la **canonisation des deux
+côtés** — la source map peut stocker des chemins canoniques (macOS :
+`/var` → `/private/var/…`) pendant que `monthly_file` est construit sur le
+chemin tel que chargé ; une égalité naive fait passer « même fichier » pour
+« deux fichiers distincts » (corrigé dans `replace_transaction` via le
+`canonize` existant).
 
 _Passe UI « onglets → fenêtres flottantes » (2026-11-01) — terminée (commit ci-dessous)._
 
@@ -151,6 +198,55 @@ largeur, barres carte budget 180→240 ; fenêtre 1200×760 → 1300×800 (min 9
 `cargo check`/fmt/clippy/tests/`rledger check` verts après passe.
 
 ## À faire
+
+### Revue de code — suite (2026-11-01, post-v0.1.0)
+
+Trouvailles de la revue complète non encore traitées (le détail est dans l'entrée
+« Revue de code Rust complète » de « En cours » ; #1/#2/#4 sont déjà corrigés).
+Ordre de priorité proposé :
+
+- [ ] **#5 — Pré-vérification trop stricte** (`household-core/writer.rs`) : la
+  précheck exige `is_valid()` = zéro diagnostic, warnings compris — un W
+  préexistant sans rapport avec l'écriture bloquerait toute mutation pour
+  toujours. Filtrer sur les erreurs fatales et comparer le diagnostic
+  avant/après (nuisance des diagnostics **nouveaux** seulement).
+- [ ] **#3 — Empreinte ambiguë** (`worker.rs::localiser`) : deux transactions
+  jumelles le même jour (même date + tiers + libellé) satisfont la même
+  empreinte et `position()` peut rewriter la mauvaise ligne. Ajouter un
+  discriminant à l'empreinte (montant principal, ou `fichier:ligne` d'origine
+  en secours quand l'index est encore valide).
+- [ ] **#6 — Verrou sans garde Drop** (`household-core/writer.rs`) : un panic
+  dans le corps de `with_ledger_lock` laisse `.write.lock` orphelin
+  (nettoyage anti-stale repoussé à 120 s + demi-attente). Un petit guard
+  struct avec `Drop` qui retire le fichier de verrou.
+- [ ] **#8 — Préférences non atomiques** (`household-gui/config.rs`) : écriture
+  directe (pas de tmp+rename) et TOML corrompu → défauts silencieux puis
+  réécriture (préférences écrasées sans trace). Réutiliser une écriture
+  atomique + un diagnostic au démarrage.
+- [ ] **#10 — Courbe du patrimoine O(mois × transactions)** (`viewmodel.rs`) :
+  `courbe_patrimoine` relance un `balances_at` complet par point (rejeu du
+  booking sur TOUT le ledger à chaque mois). Une seule passe incrémentale
+  le long de la chronologie suffit (appliquer les bookings et consigner le
+  dernier jour de chaque mois). Même axe pour `balance_of`.
+- [ ] **#7 — Calendrier maison** (`viewmodel.rs`) : `fin_de_mois`/
+  `est_bissextile` réimplémentent jiff avec `expect` (mois 0 → panic sur
+  une API `pub`) ; `month_start_exclusive` (`household-budget/grid.rs`) fait
+  `unwrap_or(year)` — année fausse silencieuse à `i16::MAX`. Passer à jiff
+  (`days_in_month`, arithmétique de dates) et retourner `Option`.
+- Nits à grappiller (sans urgence) :
+  - `viewmodel::rapports` classe par `starts_with("Expenses")` sans `:` —
+    utiliser `AccountTypeKind` comme le fait déjà `patrimoine_net` ;
+    `"Assets:Epargne"`/`"EUR"` hardcodés vs options du ledger.
+  - `household-core/writer.rs` : `fn ioutil_header` (goïsme → `entete_mensuel`)
+    ; paramètre `_file_id` vestige de `rewrite_span`.
+  - `household-budget/writer.rs` : `ensure_include` insère après le dernier
+    include de budget sans trier par année.
+  - `household-gui/saisie.rs` : la contrepartie d'équilibrage avec résidu déjà
+    nul écrit un posting `0.00 EUR` (bruit dans le fichier).
+  - `household-git` : troncature d'OID `[..7]` littérale ; `touche_chemin` ne
+    compare que le parent 0 (commits de fusion) ; TOCTOU statut→commit.
+  - `household-gui/worker.rs` : `cmd_tx.send(...).ok()` ignore la fermeture du
+    canal (déférence — le worker ne panic plus, à reconsidérer quand même).
 
 ### Jalon 1 — Squelette workspace + ledger d'exemple
 

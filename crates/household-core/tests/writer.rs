@@ -166,6 +166,82 @@ fn casser_une_assertion_balance_est_refuse() {
     common::cleanup(&scratch);
 }
 
+#[test]
+fn replace_changement_de_date_une_seule_mutation() {
+    // Régression : un remplacement à date changée est **une seule** mutation
+    // (retrait + réinsertion pré-vérifiés ensemble) — plus la cascade
+    // remove puis append de deux cycles indépendants.
+    let main = ledger_copy();
+    let scratch = main.parent().unwrap().parent().unwrap().to_path_buf();
+    let base = Snapshot::load(&main).expect("copie valide");
+
+    // Cas 1 — changement de jour dans le même fichier mensuel : le bloc est
+    // retiré puis réinséré à sa place triée, patch composé.
+    let txn = courses("2026-04-20", dec!(12.00), "Repas du 20");
+    let snap = append_transaction(&base, &txn).expect("append valide");
+    let index = index_of(&snap, "2026-04-20".parse().unwrap()).expect("index du Repas du 20");
+    let apres = replace_transaction(
+        &snap,
+        index,
+        &courses("2026-04-12", dec!(12.00), "Repas du 12"),
+    )
+    .expect("replace intra-mois");
+    assert!(apres.is_valid(), "{:?}", apres.errors());
+
+    let texte = common::monthly(&main, 2026, 4);
+    assert!(!texte.contains("Repas du 20"), "ancien bloc retiré");
+    assert!(texte.contains("Repas du 12"), "bloc du 12 réinséré");
+    // L'ordre trié par date est rétabli dans le fichier.
+    let mut last = "0000-00-00".to_string();
+    for line in texte.lines().filter(|l| l.starts_with("2026-")) {
+        assert!(
+            &line[..10] >= last.as_str(),
+            "ordre trié : {last:?} puis {line:?}"
+        );
+        last = line[..10].to_string();
+    }
+
+    // Cas 2 — changement de MOIS : le retrait (avril) et l'insertion
+    // (mai, fichier créé) passent en une mutation pré-vérifiée ensemble.
+    let txn = courses("2026-04-28", dec!(30.00), "Courses du 28");
+    let snap = append_transaction(&apres, &txn).expect("append avril 28");
+    let index = index_of(&snap, "2026-04-28".parse().unwrap()).expect("index du 28");
+    let final_ = replace_transaction(
+        &snap,
+        index,
+        &courses("2026-05-02", dec!(30.00), "Courses du 02"),
+    )
+    .expect("replace inter-mois");
+    assert!(final_.is_valid(), "{:?}", final_.errors());
+
+    let avril = common::monthly(&main, 2026, 4);
+    assert!(
+        !avril.contains("Courses du 28"),
+        "retrait du fichier d'avril"
+    );
+    let mai = common::monthly(&main, 2026, 5);
+    assert!(
+        mai.contains("# Transactions 2026-05"),
+        "fichier de mai créé (avec en-tête)"
+    );
+    assert!(mai.contains("Courses du 02"), "bloc réinséré dans mai");
+
+    // Soldes : CC a suivi — l'assertion `balance` du 2026-04-01
+    // reste intacte, et à fin de ledger :
+    // 6877.39 (contrôle 04-01) − 12 (Repas du 12) − 30 (Courses du 02, dans
+    // un « Courses » la banque est créditée −30 où qu'aillent la date).
+    let cc = final_
+        .balance_of(
+            "Assets:Banque:CompteCourant",
+            "2026-05-02".parse().unwrap(),
+            Through::EndOfDay,
+        )
+        .expect("soldes");
+    assert_eq!(cc.and_then(|m| m.get("EUR").copied()), Some(dec!(6835.39)));
+
+    common::cleanup(&scratch);
+}
+
 /// Index (dans l'ordre des entrées) de la première transaction datée `date`.
 fn index_of(snapshot: &Snapshot, date: NaiveDate) -> Option<usize> {
     snapshot

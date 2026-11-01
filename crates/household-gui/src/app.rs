@@ -97,6 +97,10 @@ pub struct FoyerApp {
 
     /// Fenêtres d'écrans ouvertes, indexées comme `Onglet::TOUS`.
     fenetres_ouvertes: [bool; Onglet::TOUS.len()],
+    /// Une écriture de saisie est en vol : l'Enregistrer est ignoré jusqu'au
+    /// résultat (anti doublon — le brouillon n'est plus réinitialisé à
+    /// l'envoi, il survit à un refus pour être corrigé).
+    saisie_en_vol: bool,
     journal: crate::views::journal::UiState,
     saisie: crate::views::saisie::UiState,
     budget: crate::views::budget::UiState,
@@ -132,6 +136,7 @@ impl FoyerApp {
             donnees: None,
             echec: None,
             en_chargement: true,
+            saisie_en_vol: false,
             flash: None,
             fenetres_ouvertes,
             journal: crate::views::journal::UiState::new(),
@@ -190,6 +195,12 @@ impl eframe::App for FoyerApp {
                 LoadOutcome::Echec(echec) => {
                     // L'état précédent reste affiché sous l'erreur.
                     self.echec = Some(echec);
+                    if self.saisie_en_vol {
+                        // Un échec peut venir d'une écriture en vol (ledger
+                        // illisible, échec post-écriture) : débloque la
+                        // saisie, le brouillon reste corrigeable.
+                        self.saisie_en_vol = false;
+                    }
                 }
                 LoadOutcome::Ecrit { donnees, message } => {
                     self.donnees = Some(donnees);
@@ -199,9 +210,22 @@ impl eframe::App for FoyerApp {
                     // ligne fraîchement écrite.
                     self.ouvrir(Onglet::Journal);
                     self.journal.selection = None;
+                    if self.saisie_en_vol {
+                        // Brouillon réinitialisé : prêt pour la saisie
+                        // suivante. Uniquement si l'Ecrit est bien le
+                        // résultat d'une saisie (un `Ecrit` budgétaire ne
+                        // doit pas effacer un brouillon en cours d'édition).
+                        self.saisie =
+                            crate::views::saisie::UiState::nouveau(crate::worker::aujourd_hui());
+                        self.saisie_en_vol = false;
+                    }
                 }
                 LoadOutcome::Refuse(refus) => {
                     self.flash = Some((refus, true));
+                    // Refus d'écriture : la saisie est débloquée, le brouillon
+                    // est conservé pour correction (la remise à zéro n'a lieu
+                    // qu'à la confirmation, cf. `Ecrit`).
+                    self.saisie_en_vol = false;
                 }
                 LoadOutcome::Git { donnees, message } => {
                     self.git_donnees = Some(donnees);
@@ -436,6 +460,11 @@ impl FoyerApp {
                     Some(crate::views::saisie::Action::Annuler) => {
                         self.saisie =
                             crate::views::saisie::UiState::nouveau(crate::worker::aujourd_hui());
+                        // Annulation pendant une écriture en vol : déverrouille
+                        // la saisie ; l'`Ecrit` à venir ne réécrasera pas un
+                        // nouveau brouillon (le reset n'a lieu que si la
+                        // saisie était en vol au moment du résultat).
+                        self.saisie_en_vol = false;
                         self.fenetres_ouvertes[Onglet::Saisie.index()] = false;
                         self.ouvrir(Onglet::Journal);
                     }
@@ -544,6 +573,10 @@ impl FoyerApp {
 impl FoyerApp {
     /// Envoie le brouillon au worker (création ou modification selon le mode).
     fn envoyer_brouillon(&mut self) {
+        if self.saisie_en_vol {
+            return; // une écriture est déjà en vol : pas de doublon
+        }
+        self.saisie_en_vol = true;
         self.en_chargement = true;
         self.flash = None;
         match &self.saisie.mode {
@@ -562,8 +595,10 @@ impl FoyerApp {
                     .ok();
             }
         }
-        // Brouillon réinitialisé : prêt pour la saisie suivante.
-        self.saisie = crate::views::saisie::UiState::nouveau(crate::worker::aujourd_hui());
+        // Le brouillon n'est PAS réinitialisé ici : en cas de refus
+        // (compte fermé, pré-vérification du writer…), l'utilisateur garde
+        // sa saisie pour la corriger. La remise à zéro n'a lieu qu'à la
+        // réception de `LoadOutcome::Ecrit` (cf. `logic`).
     }
 
     /// Demande la suppression (index + empreinte pour la relocalisation).

@@ -113,6 +113,9 @@ const DEBOUNCE: Duration = Duration::from_millis(250);
 pub fn demarrer(ctx: egui::Context, main: PathBuf) -> (Sender<Command>, Receiver<LoadOutcome>) {
     let (cmd_tx, cmd_rx) = std::sync::mpsc::channel::<Command>();
     let (out_tx, out_rx) = std::sync::mpsc::channel::<LoadOutcome>();
+    // Le worker peut remettre des commandes en file (drain du debounce) —
+    // il lui faut son propre émetteur vers le canal des commandes.
+    let remise_en_file = cmd_tx.clone();
 
     thread::spawn(move || {
         // Premier chargement : la GUI a quelque chose à montrer tout de suite.
@@ -122,10 +125,31 @@ pub fn demarrer(ctx: egui::Context, main: PathBuf) -> (Sender<Command>, Receiver
         while let Ok(commande) = cmd_rx.recv() {
             match commande {
                 Command::Reload => {
-                    // Debounce : écrête la rafale d'événements en attente.
-                    while cmd_rx.try_recv().is_ok() {}
+                    // Debounce : écrête la rafale d'événements du watcher
+                    // SANS jeter les commandes utilisateur — une mutation
+                    // (écriture, édition, suppression…) arrivée pendant la
+                    // rafale est remise en fin de file et traitée dans
+                    // l'ordre, avec son propre résultat. (Régression
+                    // corrigée : le drain d'origine aspirait TOUTES les
+                    // commandes en attente, écritures comprises.)
+                    let mut conservees: Vec<Command> = Vec::new();
+                    while let Ok(cmd) = cmd_rx.try_recv() {
+                        if !matches!(cmd, Command::Reload) {
+                            conservees.push(cmd);
+                        }
+                    }
                     thread::sleep(DEBOUNCE);
-                    while cmd_rx.try_recv().is_ok() {}
+                    while let Ok(cmd) = cmd_rx.try_recv() {
+                        if !matches!(cmd, Command::Reload) {
+                            conservees.push(cmd);
+                        }
+                    }
+                    for cmd in conservees {
+                        // Remise en file : le rechargement ci-dessous part
+                        // d'abord ; ces commandes seront ensuite traitées
+                        // dans l'ordre, chacune avec son propre résultat.
+                        remise_en_file.send(cmd).ok();
+                    }
 
                     out_tx.send(charger(&main)).ok();
                     ctx.request_repaint();

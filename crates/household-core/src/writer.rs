@@ -60,8 +60,11 @@ pub fn append_transaction(snapshot: &Snapshot, txn: &Transaction) -> Result<Snap
 
 /// Remplace la transaction à l'index d'entrée donné par `new_txn`.
 ///
-/// Même date : remplacement **sur place** (span exact). Autre date :
-/// suppression + insertion datée de l'ancien fichier/nouveau fichier mensuel.
+/// Même date : remplacement **sur place** (span exact). Autre date : retrait
+/// **et** réinsertion triée appliqués en **une seule mutation** (une
+/// pré-vérification scratch, des écritures atomiques groupées — plus de
+/// fenêtre de crash où la transaction serait supprimée sans jamais être
+/// réécrite, ni double coût de précheck).
 pub fn replace_transaction(
     snapshot: &Snapshot,
     index: usize,
@@ -88,8 +91,58 @@ pub fn replace_transaction(
         })
     } else {
         // Changement de date : l'ordre de tri doit être rétabli.
-        let removed = remove_transaction(snapshot, index)?;
-        append_transaction(&removed, new_txn)
+        let main = snapshot.main.clone();
+        let (file_id, span) = snapshot.span_of(index)?;
+        let source = snapshot.source_of(index)?;
+        let bloc_nouveau = canonical_block(new_txn);
+        let iso = new_txn.date.to_string();
+        let header = ioutil_header(new_txn.date);
+        let cible_ancienne = source.file;
+        let cible_nouvelle = monthly_file(&main, new_txn.date);
+
+        // Comparaison **canonisée** : la source map peut stocker des chemins
+        // canoniques (macOS : /var → /private/var) pendant que `monthly_file`
+        // est construit sur le chemin tel que chargé — sans canonisation,
+        // un changement de jour dans le même mois serait traité comme
+        // deux fichiers distincts et les deux patches s'écraseraient.
+        if canonize(&cible_ancienne) == canonize(&cible_nouvelle) {
+            // Changement de jour dans le même mois : un seul patch composé
+            // (retrait du bloc puis insertion à la nouvelle place).
+            mutate(&main, cible_ancienne, move |old_text| {
+                let retire = rewrite_span(old_text, file_id, span, |_, _, after| after.to_string());
+                Ok(Some(insert_sorted(
+                    &retire,
+                    &bloc_nouveau,
+                    &iso,
+                    Some(&header),
+                )))
+            })
+        } else {
+            // Changement de mois : deux fichiers patchés et pré-vérifiés
+            // ensemble (`edit_ledger_files` — cibles distinctes, patches
+            // indépendants appliqués sous le même verrou).
+            edit_ledger_files(
+                &main,
+                vec![
+                    FileChange::new(cible_ancienne, move |old_text| {
+                        Ok(Some(rewrite_span(
+                            old_text,
+                            file_id,
+                            span,
+                            |_, _, after| after.to_string(),
+                        )))
+                    }),
+                    FileChange::new(cible_nouvelle, move |old_text| {
+                        Ok(Some(insert_sorted(
+                            old_text,
+                            &bloc_nouveau,
+                            &iso,
+                            Some(&header),
+                        )))
+                    }),
+                ],
+            )
+        }
     }
 }
 
