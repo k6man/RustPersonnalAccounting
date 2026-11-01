@@ -21,7 +21,37 @@ Passe UI « largeurs » appliquée (2026-10-30), **puis passe de vérification v
 
 ## En cours
 
-_Passe UI « vérification visuelle » (2026-10-31) — terminée, commit ci-dessous._
+_Passe UI « onglets → fenêtres flottantes » (2026-11-01) — terminée (commit ci-dessous)._
+
+**Décisions** (tranchées avec la maîtresse d'ouvrage) : les six écrans deviennent des
+`egui::Window` flottants ; le tableau de bord démarre quasi plein écran comme les
+autres ; position/taille persistées par egui/eframe (zéro code) ; raccourcis Ctrl+1..6.
+
+**Implémentation** (essentiellement `app.rs`) :
+- `onglet: Onglet` (sélection unique) → `fenetres_ouvertes: [bool; 6]` aligné sur
+  `Onglet::TOUS` ; `ouvrir`/`basculer` ; `vue(&mut self, ui, Onglet, &Arc<UiData>)`
+  = extraction de l'ancien match (les vues restent inchangées).
+- Barre du haut : `ui.toggle_value(&mut sel, libellé)` (signature 0.37 = `&mut bool`,
+  pas `checked: bool`) ; l'ouverture de l'écran Git déclenche `GitStatut` à chaque
+  ouverture.
+- `LoadOutcome::Ecrit` : ancien `onglet = Journal` → `ouvrir(Journal)` (re-branché),
+  l'annulation de saisie ferme la fenêtre Saisie et ouvre le Journal.
+- Fenêtres : `Window::new(libellé).open(&mut ouvert).resizable(true).default_size(...)`
+  — **egui 0.37 n'a pas de `maximized` pour les fenêtres internes** : effet « maximisé »
+  = `default_size(viewport − 40 px)` pour le tableau de bord, 900×620 pour les autres.
+  `default_size` n'est appliqué que hors mémoire (redimensionnements utilisateur
+  respectés, y compris entre sessions via la persistance eframe). `min_width(460)`.
+- Tampon d'ouverture/fermeture (croix) : egui écrit `open` → bool local reporté dans
+  l'état après `show` (emprunt partagé).
+- `COMPTA_ECRAN=<tab>` : ouvre **seulement** la fenêtre demandée (affordance de test,
+  captures prévisibles) — doc `main.rs` mise à jour.
+- `Ui::screen_rect` n'existe plus en 0.37 → `ctx.viewport_rect()`.
+- `UiState` des vues vivent dans `FoyerApp` : fermer une fenêtre conserve le brouillon/
+  filtres/année ; ré-ouverture les retrouve.
+- Validation : `just check` vert (76 tests) + captures (tab de bord quasi plein écran,
+  Git + 900×620 sans warning d'IDs, Journal avec filtres sur 2 rangées lisibles).
+
+_Passe UI « vérification visuelle » (2026-10-31) — archivée ci-dessous._
 
 **Méthode** : app lancée depuis le shell sur chaque onglet (`COMPTA_ECRAN=<tab>`),
 capture `screencapture` après 6 s. La fenêtre d'un lancement via `open` panique dans

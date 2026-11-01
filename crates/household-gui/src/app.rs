@@ -47,19 +47,30 @@ impl Onglet {
         }
     }
 
-    /// Onglet choisi par la variable d'environnement `COMPTA_ECRAN`
-    /// (`dashboard|journal|saisie|budget|rapports|git`) — affordance de
-    /// test, l'app démarre sinon sur le tableau de bord.
+    /// Position dans [`Onglet::TOUS`] (indexé par l'état des fenêtres et les
+    /// raccourcis Ctrl+1..6).
     #[must_use]
-    pub fn depuis_env(var: Option<&str>) -> Self {
+    pub fn index(self) -> usize {
+        Self::TOUS
+            .iter()
+            .position(|o| *o == self)
+            .expect("Onglet::TOUS contient tous les onglets")
+    }
+
+    /// Écran demandé par la variable d'environnement `COMPTA_ECRAN`
+    /// (`dashboard|journal|saisie|budget|rapports|git`) — affordance de
+    /// test : seule cette fenêtre est ouverte au démarrage (sinon : le
+    /// tableau de bord).
+    #[must_use]
+    pub fn depuis_env(var: Option<&str>) -> Option<Self> {
         match var.map(str::trim).map(str::to_ascii_lowercase).as_deref() {
-            Some("journal") => Self::Journal,
-            Some("saisie") => Self::Saisie,
-            Some("budget") => Self::Budget,
-            Some("rapports") => Self::Rapports,
-            Some("git") => Self::Git,
-            Some("dashboard") | Some("tableau") => Self::TableauDeBord,
-            _ => Self::TableauDeBord,
+            Some("journal") => Some(Self::Journal),
+            Some("saisie") => Some(Self::Saisie),
+            Some("budget") => Some(Self::Budget),
+            Some("rapports") => Some(Self::Rapports),
+            Some("git") => Some(Self::Git),
+            Some("dashboard") | Some("tableau") => Some(Self::TableauDeBord),
+            _ => None,
         }
     }
 }
@@ -84,7 +95,8 @@ pub struct FoyerApp {
     /// Message transitoire (écriture réussie / refusée).
     flash: Option<(String, bool)>, // (texte, est_erreur)
 
-    onglet: Onglet,
+    /// Fenêtres d'écrans ouvertes, indexées comme `Onglet::TOUS`.
+    fenetres_ouvertes: [bool; Onglet::TOUS.len()],
     journal: crate::views::journal::UiState,
     saisie: crate::views::saisie::UiState,
     budget: crate::views::budget::UiState,
@@ -101,7 +113,17 @@ impl FoyerApp {
     pub fn new(cc: &eframe::CreationContext<'_>, main: PathBuf) -> Self {
         let (cmd_tx, outcome_rx) = crate::worker::demarrer(cc.egui_ctx.clone(), main.clone());
         let watcher = crate::worker::demarrer_watcher(&main, cmd_tx.clone());
-        let onglet = Onglet::depuis_env(std::env::var("COMPTA_ECRAN").ok().as_deref());
+        let mut fenetres_ouvertes = [false; Onglet::TOUS.len()];
+        match Onglet::depuis_env(std::env::var("COMPTA_ECRAN").ok().as_deref()) {
+            // Affordance de test : SEULE l'écran demandé est ouvert.
+            Some(onglet) => {
+                fenetres_ouvertes[onglet.index()] = true;
+            }
+            // Usage normal : le tableau de bord démarre quasi plein écran.
+            None => {
+                fenetres_ouvertes[Onglet::TableauDeBord.index()] = true;
+            }
+        }
         let app = Self {
             main,
             cmd_tx,
@@ -111,7 +133,7 @@ impl FoyerApp {
             echec: None,
             en_chargement: true,
             flash: None,
-            onglet,
+            fenetres_ouvertes,
             journal: crate::views::journal::UiState::new(),
             saisie: crate::views::saisie::UiState::nouveau(crate::worker::aujourd_hui()),
             budget: crate::views::budget::UiState::nouveau(crate::worker::aujourd_hui().year()),
@@ -119,8 +141,8 @@ impl FoyerApp {
             git_donnees: None,
             config: crate::config::Config::charger(),
         };
-        // Écran Git : même arme que l'entrée par l'onglet (statut à la volée).
-        if app.onglet == Onglet::Git {
+        // Écran Git : même arme que l'ouverture par la barre (statut à la volée).
+        if app.fenetres_ouvertes[Onglet::Git.index()] {
             app.cmd_tx.send(Command::GitStatut).ok();
         }
         app
@@ -129,6 +151,30 @@ impl FoyerApp {
     fn demander_rechargement(&mut self) {
         self.en_chargement = true;
         self.cmd_tx.send(Command::Reload).ok();
+    }
+
+    /// Ouvre une fenêtre d'écran. L'écran Git relit son statut à chaque
+    /// ouverture (arme du même genre que l'ancien clic d'onglet).
+    fn ouvrir(&mut self, onglet: Onglet) {
+        let index = onglet.index();
+        if self.fenetres_ouvertes[index] {
+            return; // déjà ouverte : egui la met au premier plan au clic
+        }
+        self.fenetres_ouvertes[index] = true;
+        if onglet == Onglet::Git {
+            self.en_chargement = true;
+            self.flash = None;
+            self.cmd_tx.send(Command::GitStatut).ok();
+        }
+    }
+
+    /// Bascule une fenêtre (barre / Ctrl+N).
+    fn basculer(&mut self, onglet: Onglet) {
+        if self.fenetres_ouvertes[onglet.index()] {
+            self.fenetres_ouvertes[onglet.index()] = false;
+        } else {
+            self.ouvrir(onglet);
+        }
     }
 }
 
@@ -149,8 +195,9 @@ impl eframe::App for FoyerApp {
                     self.donnees = Some(donnees);
                     self.echec = None;
                     self.flash = Some((message, false));
-                    // Après une écriture, on retourne au journal pour la voir.
-                    self.onglet = Onglet::Journal;
+                    // Après une écriture, on ouvre le journal pour voir la
+                    // ligne fraîchement écrite.
+                    self.ouvrir(Onglet::Journal);
                     self.journal.selection = None;
                 }
                 LoadOutcome::Refuse(refus) => {
@@ -242,21 +289,17 @@ impl eframe::App for FoyerApp {
         }
 
         egui::CentralPanel::default().show(ui, |ui| {
-            // Barre d'onglets + flash.
+            // Barre des écrans (fenêtres ouvertes/fermées) + flash.
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 12.0;
-                for onglet in Onglet::TOUS {
-                    if ui
-                        .selectable_label(self.onglet == onglet, onglet.libelle())
-                        .clicked()
-                    {
-                        self.onglet = onglet;
-                        // L'écran Git relit son statut à chaque entrée.
-                        if onglet == Onglet::Git {
-                            self.en_chargement = true;
-                            self.flash = None;
-                            self.cmd_tx.send(Command::GitStatut).ok();
-                        }
+                for (index, onglet) in Onglet::TOUS.into_iter().enumerate() {
+                    let reponse =
+                        ui.toggle_value(&mut self.fenetres_ouvertes[index], onglet.libelle());
+                    if reponse.changed() && self.fenetres_ouvertes[index] && onglet == Onglet::Git {
+                        // Écran Git : re-lit son statut à chaque ouverture.
+                        self.en_chargement = true;
+                        self.flash = None;
+                        self.cmd_tx.send(Command::GitStatut).ok();
                     }
                 }
                 if let Some((message, est_erreur)) = &self.flash {
@@ -276,164 +319,225 @@ impl eframe::App for FoyerApp {
             ui.add_space(6.0);
             ui.separator();
 
-            match (&self.donnees, self.onglet) {
-                (Some(donnees), Onglet::TableauDeBord) => {
-                    crate::views::dashboard::afficher(ui, &donnees.tableau_de_bord);
-                }
-                (Some(donnees), Onglet::Journal) => {
-                    let action =
-                        crate::views::journal::afficher(ui, &donnees.journal, &mut self.journal);
-                    match action {
-                        Some(crate::views::journal::ActionJournal::Modifier(index)) => {
-                            // Pré-remplit la saisie depuis la ligne du journal.
-                            if let Some(ligne) =
-                                donnees.journal.lignes.iter().find(|l| l.index == index)
-                            {
-                                self.saisie = crate::views::saisie::UiState::modification(ligne);
-                                self.onglet = Onglet::Saisie;
-                            }
-                        }
-                        Some(crate::views::journal::ActionJournal::Supprimer(index)) => {
-                            self.demander_suppression(index);
-                        }
-                        None => {}
-                    }
-                }
-                (Some(donnees), Onglet::Saisie) => {
-                    let action = crate::views::saisie::afficher(
-                        ui,
-                        &mut self.saisie,
-                        &donnees.comptes,
-                        &donnees.payees,
-                    );
-                    match action {
-                        Some(crate::views::saisie::Action::Enregistrer) => {
-                            self.envoyer_brouillon();
-                        }
-                        Some(crate::views::saisie::Action::Annuler) => {
-                            self.saisie = crate::views::saisie::UiState::nouveau(
-                                crate::worker::aujourd_hui(),
+            if self.donnees.is_none() {
+                // Ledger pas encore chargé (ou échec de chargement).
+                ui.centered_and_justified(|ui| {
+                    ui.vertical_centered(|ui| {
+                        ui.add_space(40.0);
+                        ui.add(egui::widgets::Spinner::new().size(42.0));
+                        ui.add_space(12.0);
+                        ui.label("Chargement du ledger…");
+                        if self.echec.is_none() {
+                            ui.label(
+                                RichText::new(self.main.display().to_string())
+                                    .weak()
+                                    .small(),
                             );
-                            self.onglet = Onglet::Journal;
                         }
-                        None => {}
-                    }
-                }
-                (Some(donnees), Onglet::Budget) => {
-                    let action = crate::views::budget::afficher(
-                        ui,
-                        donnees.grilles.get(&self.budget.annee),
-                        &mut self.budget,
-                        |famille| self.config.rollover_actif(famille),
-                    );
-                    match action {
-                        Some(crate::views::budget::ActionBudget::Cellule {
-                            annee,
-                            date,
-                            compte,
-                            montant,
-                        }) => {
-                            self.en_chargement = true;
-                            self.flash = None;
-                            self.cmd_tx
-                                .send(Command::CelluleBudget {
-                                    annee,
-                                    date,
-                                    compte,
-                                    montant,
-                                })
-                                .ok();
-                        }
-                        Some(crate::views::budget::ActionBudget::GenererAnnee {
-                            source,
-                            cible,
-                            pourcent,
-                            pas,
-                        }) => {
-                            self.en_chargement = true;
-                            self.flash = None;
-                            self.cmd_tx
-                                .send(Command::GenererAnnee {
-                                    source,
-                                    cible,
-                                    pourcent,
-                                    pas,
-                                })
-                                .ok();
-                        }
-                        Some(crate::views::budget::ActionBudget::BasculerRollover(famille)) => {
-                            match self.config.basculer_rollover(&famille) {
-                                Ok(()) => {
-                                    self.flash = Some((
-                                        format!(
-                                            "rollover {} — préférence enregistrée",
-                                            if self.config.rollover_actif(&famille) {
-                                                "activé"
-                                            } else {
-                                                "désactivé"
-                                            }
-                                        ),
-                                        false,
-                                    ));
-                                }
-                                Err(e) => self.flash = Some((e, true)),
-                            }
-                        }
-                        None => {}
-                    }
-                }
-                (Some(donnees), Onglet::Rapports) => {
-                    crate::views::rapports::afficher(ui, &donnees.rapports);
-                }
-                (Some(_), Onglet::Git) => {
-                    match &self.git_donnees {
-                        Some(git) => {
-                            let action = crate::views::git::afficher(ui, git, &mut self.git);
-                            match action {
-                                Some(crate::views::git::ActionGit::Actualiser) => {
-                                    self.en_chargement = true;
-                                    self.flash = None;
-                                    self.cmd_tx.send(Command::GitStatut).ok();
-                                }
-                                Some(crate::views::git::ActionGit::Commit(message))
-                                    if !message.is_empty() =>
-                                {
-                                    self.en_chargement = true;
-                                    self.flash = None;
-                                    self.cmd_tx.send(Command::GitCommit { message }).ok();
-                                }
-                                _ => {}
-                            }
-                        }
-                        None => {
-                            // Écran git pas encore chargé : spinner + premier
-                            // déclenchement (l'arm de l'onglet a déjà
-                            // envoyé GitStatut).
-                            ui.centered_and_justified(|ui| {
-                                ui.add(egui::widgets::Spinner::new().size(30.0));
-                            });
-                        }
-                    }
-                }
-                (None, _) => {
-                    ui.centered_and_justified(|ui| {
-                        ui.vertical_centered(|ui| {
-                            ui.add_space(40.0);
-                            ui.add(egui::widgets::Spinner::new().size(42.0));
-                            ui.add_space(12.0);
-                            ui.label("Chargement du ledger…");
-                            if self.echec.is_none() {
-                                ui.label(
-                                    RichText::new(self.main.display().to_string())
-                                        .weak()
-                                        .small(),
-                                );
-                            }
-                        });
                     });
-                }
+                });
+            } else if self.fenetres_ouvertes.iter().all(|ouvert| !ouvert) {
+                ui.label(
+                    RichText::new("Aucun écran ouvert — Ctrl+1 à Ctrl+6 ou la barre au-dessus.")
+                        .weak(),
+                );
             }
         });
+
+        // Raccourcis clavier Ctrl+1..6 : bascule de la fenêtre d'écran.
+        const TOUCHES: [egui::Key; Onglet::TOUS.len()] = [
+            egui::Key::Num1,
+            egui::Key::Num2,
+            egui::Key::Num3,
+            egui::Key::Num4,
+            egui::Key::Num5,
+            egui::Key::Num6,
+        ];
+        if self.donnees.is_some() {
+            for (touche, onglet) in TOUCHES.into_iter().zip(Onglet::TOUS) {
+                if ui.input(|entree| entree.modifiers.ctrl && entree.key_pressed(touche)) {
+                    self.basculer(onglet);
+                }
+            }
+        }
+
+        // Les écrans ouverts, en fenêtres flottantes (mémorisation position/
+        // taille par la persistance egui/eframe).
+        let donnees = self.donnees.clone();
+        if let Some(donnees) = donnees {
+            for (index, onglet) in Onglet::TOUS.into_iter().enumerate() {
+                // Tampon pour la fermeture par la croix de la fenêtre : egui
+                // écrit dans ce bool ; on le reporte dans l'état après coup
+                // (emprunt partagé avec la fermeture de la vue).
+                let mut ouvert = self.fenetres_ouvertes[index];
+                if !ouvert {
+                    continue;
+                }
+                let fenetre = egui::Window::new(onglet.libelle())
+                    .open(&mut ouvert)
+                    .resizable(true)
+                    // Defaults seulement tant qu'egui n'a pas d'état mémorisé
+                    // (après un redimensionnement utilisateur, ils sont
+                    // ignorés) : le Tableau de bord démarre quasi plein
+                    // écran, les autres écrans à 900×620.
+                    .default_size(if onglet == Onglet::TableauDeBord {
+                        ui.ctx().viewport_rect().shrink(40.0).size()
+                    } else {
+                        egui::vec2(900.0, 620.0)
+                    })
+                    .min_width(460.0);
+                fenetre.show(ui.ctx(), |ui| {
+                    self.vue(ui, onglet, &donnees);
+                });
+                self.fenetres_ouvertes[index] = ouvert;
+            }
+        }
+    }
+}
+
+impl FoyerApp {
+    /// Dessine l'écran demandé (contenu d'une fenêtre). Ancien corps du
+    /// match d'onglets.
+    fn vue(&mut self, ui: &mut egui::Ui, onglet: Onglet, donnees: &Arc<UiData>) {
+        match onglet {
+            Onglet::TableauDeBord => {
+                crate::views::dashboard::afficher(ui, &donnees.tableau_de_bord);
+            }
+            Onglet::Journal => {
+                let action =
+                    crate::views::journal::afficher(ui, &donnees.journal, &mut self.journal);
+                match action {
+                    Some(crate::views::journal::ActionJournal::Modifier(index)) => {
+                        // Pré-remplit la saisie depuis la ligne du journal.
+                        if let Some(ligne) =
+                            donnees.journal.lignes.iter().find(|l| l.index == index)
+                        {
+                            self.saisie = crate::views::saisie::UiState::modification(ligne);
+                            self.ouvrir(Onglet::Saisie);
+                        }
+                    }
+                    Some(crate::views::journal::ActionJournal::Supprimer(index)) => {
+                        self.demander_suppression(index);
+                    }
+                    None => {}
+                }
+            }
+            Onglet::Saisie => {
+                let action = crate::views::saisie::afficher(
+                    ui,
+                    &mut self.saisie,
+                    &donnees.comptes,
+                    &donnees.payees,
+                );
+                match action {
+                    Some(crate::views::saisie::Action::Enregistrer) => {
+                        self.envoyer_brouillon();
+                    }
+                    Some(crate::views::saisie::Action::Annuler) => {
+                        self.saisie =
+                            crate::views::saisie::UiState::nouveau(crate::worker::aujourd_hui());
+                        self.fenetres_ouvertes[Onglet::Saisie.index()] = false;
+                        self.ouvrir(Onglet::Journal);
+                    }
+                    None => {}
+                }
+            }
+            Onglet::Budget => {
+                let action = crate::views::budget::afficher(
+                    ui,
+                    donnees.grilles.get(&self.budget.annee),
+                    &mut self.budget,
+                    |famille| self.config.rollover_actif(famille),
+                );
+                match action {
+                    Some(crate::views::budget::ActionBudget::Cellule {
+                        annee,
+                        date,
+                        compte,
+                        montant,
+                    }) => {
+                        self.en_chargement = true;
+                        self.flash = None;
+                        self.cmd_tx
+                            .send(Command::CelluleBudget {
+                                annee,
+                                date,
+                                compte,
+                                montant,
+                            })
+                            .ok();
+                    }
+                    Some(crate::views::budget::ActionBudget::GenererAnnee {
+                        source,
+                        cible,
+                        pourcent,
+                        pas,
+                    }) => {
+                        self.en_chargement = true;
+                        self.flash = None;
+                        self.cmd_tx
+                            .send(Command::GenererAnnee {
+                                source,
+                                cible,
+                                pourcent,
+                                pas,
+                            })
+                            .ok();
+                    }
+                    Some(crate::views::budget::ActionBudget::BasculerRollover(famille)) => {
+                        match self.config.basculer_rollover(&famille) {
+                            Ok(()) => {
+                                self.flash = Some((
+                                    format!(
+                                        "rollover {} — préférence enregistrée",
+                                        if self.config.rollover_actif(&famille) {
+                                            "activé"
+                                        } else {
+                                            "désactivé"
+                                        }
+                                    ),
+                                    false,
+                                ));
+                            }
+                            Err(e) => self.flash = Some((e, true)),
+                        }
+                    }
+                    None => {}
+                }
+            }
+            Onglet::Rapports => {
+                crate::views::rapports::afficher(ui, &donnees.rapports);
+            }
+            Onglet::Git => {
+                match &self.git_donnees {
+                    Some(git) => {
+                        let action = crate::views::git::afficher(ui, git, &mut self.git);
+                        match action {
+                            Some(crate::views::git::ActionGit::Actualiser) => {
+                                self.en_chargement = true;
+                                self.flash = None;
+                                self.cmd_tx.send(Command::GitStatut).ok();
+                            }
+                            Some(crate::views::git::ActionGit::Commit(message))
+                                if !message.is_empty() =>
+                            {
+                                self.en_chargement = true;
+                                self.flash = None;
+                                self.cmd_tx.send(Command::GitCommit { message }).ok();
+                            }
+                            _ => {}
+                        }
+                    }
+                    None => {
+                        // Écran Git pas encore chargé : spinner (l'ouverture
+                        // de la fenêtre a déjà envoyé GitStatut).
+                        ui.centered_and_justified(|ui| {
+                            ui.add(egui::widgets::Spinner::new().size(30.0));
+                        });
+                    }
+                }
+            }
+        }
     }
 }
 
