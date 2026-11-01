@@ -58,6 +58,27 @@ cargo run -q -p household-core --bin household-cli -- check ledger/main.beancoun
   (`views/`) sont de la présentation pure — calculs dans `viewmodel.rs` (UiData en `Arc`)
   ou dans les modules purs des autres crates. Pas de logique métier dans les vues.
   Watcher `notify` → Reload (débounce 250 ms).
+- **Écrans = fenêtres flottantes** : `fenetres_ouvertes: [bool; 6]` dans `app.rs`
+  (méthode `FoyerApp::vue`), barre du haut en `toggle_value`, Ctrl+1..6 ; le tableau
+  de bord démarre quasi plein écran (`default_size`, pas de `maximized` en egui 0.37) ;
+  position/taille persistées par eframe ; `UiState` des vues conservés entre
+  ouvertures. `COMPTA_ECRAN=<tab>` ouvre seulement la fenêtre demandée (affordance
+  de test/captures).
+
+## Pièges egui 0.37 (détails et découvertes dans TODO.md)
+
+- Pas de `TextEdit` dans un `egui::Grid` — la cellule borne `desired_width` (~40 px
+  au départ, `grid.rs::available_rect`) ; rangées `ui.horizontal` explicites.
+- Pas de `desired_width(f32::INFINITY)` dans un Grid **ni dans le contenu d'un
+  `ScrollArea::vertical`** : le contenu se dilate à l'infini → un `Plot` voisin
+  alloue un rect infini → tracé silencieusement vide. Largeurs fixes.
+- `TableBuilder` n'a pas de scroll horizontal intégré → enrouler dans
+  `ScrollArea::horizontal().auto_shrink([false; 2])` ; **deux tables dans le même
+  Ui → `id_salt` uniques** (sinon warnings rouges « collision d'IDs »).
+- Vérification des écrans par captures : lancer directement le binaire depuis le
+  shell (via `open` : panic winit avant la fenêtre), `kill -9` + `pkill -9 -f
+  UserNotificationCenter` (un SIGTERM ouvre un dialogue de crash qui vole l'écran),
+  prévoir `caffeinate -dims` pendant une campagne de captures.
 - Préférences GUI (rollover par famille) : `~/.config/compta-foyer.toml`, **jamais dans le ledger**.
 
 ## Git
