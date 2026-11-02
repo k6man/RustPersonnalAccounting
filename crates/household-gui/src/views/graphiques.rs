@@ -8,7 +8,7 @@
 //! d'IDs et des largeurs finies (règles egui 0.37, cf. TODO.md).
 
 use egui::{Color32, RichText};
-use egui_plot::{Bar, BarChart, Legend, Plot};
+use egui_plot::{AxisHints, Bar, BarChart, Legend, Plot};
 use rust_decimal::Decimal;
 use rust_decimal::prelude::ToPrimitive;
 
@@ -19,10 +19,10 @@ use crate::viewmodel::{BudgetVsReel, GraphesData, UiData};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum OngletGraphe {
     /// Répartition des dépenses (barres horizontales colorées).
+    #[default]
     Repartition,
     /// Cascade de l'année : Revenus − Dépenses = Δ patrimoine (+ épargne
     /// en information).
-    #[default]
     Cascade,
     /// Budget vs réel du mois, barres groupées par poste.
     BudgetReel,
@@ -206,6 +206,11 @@ fn cascade(ui: &mut egui::Ui, graphes: &GraphesData) {
     Plot::new("cascade-annuelle")
         .height(230.0)
         .legend(Legend::default())
+        // Grille entière : la grille par défaut (log-10) produit des
+        // marques sous-entières qui interdisent les étiquettes
+        // (« labels get closer than min spacing → invisible ») — on
+        // force les marques aux positions entières des barres.
+        .x_grid_spacer(egui_plot::uniform_grid_spacer(|_| [4.0, 2.0, 1.0]))
         .x_axis_formatter(move |mark, _plage| {
             libelles
                 .get(mark.value.round() as usize)
@@ -218,7 +223,12 @@ fn cascade(ui: &mut egui::Ui, graphes: &GraphesData) {
         })
         .show(ui, |trace| {
             for (barre, couleur) in barres {
-                trace.bar_chart(BarChart::new(String::new(), vec![barre]).color(couleur));
+                // `BarChart::color()` ne teinte le remplissage qu'à 20 %,
+                // contour seul à l'œil (source épinglée bar_chart.rs:63) :
+                // remplissage plein explicite sur chaque barre.
+                trace.bar_chart(
+                    BarChart::new(String::new(), vec![barre.fill(couleur)]).color(couleur),
+                );
             }
         });
     ui.add_space(4.0);
@@ -257,33 +267,59 @@ fn budget_reel(ui: &mut egui::Ui, donnees: &UiData) {
     }
 
     let en_eur = |montant: Decimal| montant.to_f64().unwrap_or(0.0);
+    const GRIS_BUDGET: egui::Color32 = egui::Color32::from_rgb(0xb0, 0xb0, 0xb0);
+    const BLEU_REEL: egui::Color32 = egui::Color32::from_rgb(0x4f, 0x9f, 0xff);
+    // Remplissage plein explicite : `BarChart::color()` ne teinte le
+    // remplissage qu'à 20 % (contour seul à l'œil).
+    let nb_postes = top.len();
     let budgetes = BarChart::new(
         "Budgeté",
         top.iter()
             .enumerate()
-            .map(|(i, poste)| Bar::new(f64::from(i as u32), en_eur(poste.budgete)))
+            .map(|(i, poste)| {
+                Bar::new(f64::from(i as u32), en_eur(poste.budgete))
+                    .fill(GRIS_BUDGET)
+                    .name(nom_court(&poste.compte))
+            })
             .collect(),
     )
-    .color(egui::Color32::from_rgb(0xb0, 0xb0, 0xb0));
+    .color(GRIS_BUDGET);
     let reels = BarChart::new(
         "Réel",
         top.iter()
             .enumerate()
-            .map(|(i, poste)| Bar::new(f64::from(i as u32), en_eur(poste.reel)))
+            .map(|(i, poste)| {
+                Bar::new(f64::from(i as u32), en_eur(poste.reel))
+                    .fill(BLEU_REEL)
+                    .name(nom_court(&poste.compte))
+            })
             .collect(),
     )
-    .color(egui::Color32::from_rgb(0x4f, 0x9f, 0xff));
+    .color(BLEU_REEL);
 
-    // Noms courts de comptes pour l'axe X (2 derniers segments, tronqués).
-    let noms: Vec<String> = top.iter().map(|poste| nom_court(&poste.compte)).collect();
+    // Pas de noms de poste sur l'axe X : 8 libellés hiérarchiques ne
+    // tiennent pas côte à côte (et en dessous de 60 px l'axe les rend
+    // invisibles, source épinglée axis.rs) — numéros sur l'axe, liste
+    // détaillée numérotée sous le tracé, noms complets au survol des
+    // barres (Bar::name).
     Plot::new("budget-vs-reel")
         .height(240.0)
         .legend(Legend::default())
-        .x_axis_formatter(move |mark, _plage| {
-            noms.get(mark.value.round() as usize)
-                .cloned()
-                .unwrap_or_default()
-        })
+        .x_grid_spacer(egui_plot::uniform_grid_spacer(|_| [8.0, 4.0, 1.0]))
+        .custom_x_axes(vec![
+            AxisHints::new_x()
+                .label_spacing(egui::Rangef::new(16.0, 80.0))
+                .formatter(move |mark, _plage| {
+                    // La marque entière n (0..=8) porte le poste n+1 (liste
+                    // numérotée ci-dessous).
+                    let n = mark.value.round();
+                    if (mark.value - n).abs() < 1e-6 && n >= 0.0 && n < nb_postes as f64 {
+                        format!("{:.0}", n + 1.0)
+                    } else {
+                        String::new()
+                    }
+                }),
+        ])
         .y_axis_formatter(|mark, _plage| {
             rust_decimal::Decimal::try_from(mark.value)
                 .map(fmt::nombre)
@@ -294,7 +330,7 @@ fn budget_reel(ui: &mut egui::Ui, donnees: &UiData) {
             trace.bar_chart(reels);
         });
     ui.add_space(2.0);
-    for poste in &top {
+    for (index, poste) in top.iter().enumerate() {
         let ratio = poste.consomme().unwrap_or(0.0);
         let couleur = if poste.reel > poste.budgete {
             Color32::from_rgb(0xd8, 0x3b, 0x2f)
@@ -303,7 +339,8 @@ fn budget_reel(ui: &mut egui::Ui, donnees: &UiData) {
         };
         ui.label(
             RichText::new(format!(
-                "{} : {} / {} ({})",
+                "{}. {} : {} / {} ({})",
+                index + 1,
                 poste.compte,
                 fmt::eur(poste.reel),
                 fmt::eur(poste.budgete),
@@ -314,8 +351,8 @@ fn budget_reel(ui: &mut egui::Ui, donnees: &UiData) {
     }
 }
 
-/// Nom court d'un compte pour l'axe X : les deux derniers segments
-/// (`Expenses:Alimentation:Courses` → `Alimentation:Courses`).
+/// Nom court d'un compte pour le survol des barres : les deux derniers
+/// segments (`Expenses:Alimentation:Courses` → `Alimentation:Courses`).
 fn nom_court(compte: &str) -> String {
     let segments: Vec<&str> = compte.split(':').collect();
     let debut = segments.len().saturating_sub(2);

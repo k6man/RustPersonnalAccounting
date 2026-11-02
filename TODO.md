@@ -18,18 +18,18 @@ Passe UI « largeurs » appliquée (2026-10-30), **puis passe de vérification v
 **Revue de code Rust complète (2026-11-01)** : trois correctifs de fiabilité appliqués
 (drain du debounce, brouillon conservé au refus, `replace_transaction` atomique) —
 reste au backlog « Revue de code » (À faire).
-**Fenêtre « Graphiques » (2026-11-01)** : 7ᵉ écran flottant implémenté (répartition,
-cascade annuelle, budget vs réel) — 80 tests verts, `just check` ✓ ; reste la
-vérification visuelle par captures (optionnelle) + commit.
+**Fenêtre « Graphiques » (2026-11-01/02)** : 7ᵉ écran flottant implémenté et
+visuellement vérifié (répartition, cascade annuelle, budget vs réel) — 80
+tests verts, `just check` ✓ ; livré dans le commit suivant.
 **Prochaine action : usage réel** (saisie quotidienne, budgets 2027 via l'éditeur).
 
 ---
 
 ## En cours
 
-_Fenêtre « Graphiques » — 7ᵉ écran flottant (2026-11-01) — code + tests terminés,
-`just check` vert (80 tests) ; restent les captures `COMPTA_ECRAN=graphes`
-(optionnel) et le commit._
+_Fenêtre « Graphiques » — 7ᵉ écran flottant (2026-11-01/02) — code, tests,
+vérification visuelle des trois états (captures ✓) : `just check` vert
+(80 tests) ; livré dans le commit suivant._
 
 **Décisions tranchées avec la maîtresse d'ouvrage** : une seule fenêtre « Graphiques »
 avec des mini-onglets internes (pas une fenêtre par graphe) ; trois graphes
@@ -75,6 +75,33 @@ de `Pie` (vérifié dans les sources épinglées).
 clippy : `sort_unstable_by_key(Reverse)` et un borrow inutile dans le bras
 `vue()`). Pas de surprise comptable : l'identité du waterfall est passée
 **exacte** au premier essai.
+
+**Passe de vérification visuelle (captures `COMPTA_ECRAN=graphes`, 2026-11-02)** —
+deux découvertes supplémentaires, corrigées :
+- **Barres « creuses »** : `BarChart::color()` ne teinte le **remplissage**
+  qu'à 20 % et met la couleur en **contour** (source épinglée
+  `egui_plot-0.38.0/src/items/bar_chart.rs:63` : `fill = plot_color
+  .linear_multiply(0.2)`, stroke = couleur) → contour seule visible à l'écran.
+  Correctif : `Bar::fill(couleur)` explicite sur chaque barre (le `.color()`
+  du chart reste porteur de la légende).
+- **Étiquettes d'axe X silencieusement absentes (barres groupées)** : la
+  grille par défaut est log-10 → marques **sous-entières** ; l'axe X cache
+  les étiquettes plus rapprochées que 60 px (`axis.rs::AxisHints::new_x`,
+  `label_spacing: Rangef::new(60.0, 80.0)`) → un seul libellé affiché, et
+  8 noms hiérarchiques ne tiennent pas côte à côte de toute façon.
+  Correctif : `x_grid_spacer(uniform_grid_spacer(|_| [8.0, 4.0, 1.0]))`
+  (marques aux entiers) + axe numéroté via `custom_x_axes` avec
+  `label_spacing(16.0..80.0)` (numéro n+1 = poste n+1, la marque 0 porte le
+  poste 1) ; liste détaillée **numérotée** sous le tracé ; noms complets au
+  survol des barres (`Bar::name` + `nom_court`, deux derniers segments).
+  Même `x_grid_spacer` appliqué à la cascade (robustesse).
+
+Captures finales des trois états ✓ : répartition (total 8 393,29 € ; top
+Logement 4 077,51 € 48,6 % ; barres horizontales proportionnelles, palette
+fixe par index), cascade (13 325,45 − 8 393,29 = 4 932,16 visible à l'écran,
+Épargne info 900,00 €), budget vs réel (2026-11 : budgeté 4,90/15 €, réel 0 —
+cohérent au début du mois ; numéros 1..8 alignés sous les barres,
+légende Budgeté (gris) / Réel (bleu)).
 
 _Revue de code Rust complète (2026-11-01) — correctifs #1/#2/#4 appliqués,
 #3/#5 restent au backlog « Revue de code » (À faire) — archivée ci-dessous._
