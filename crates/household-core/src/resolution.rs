@@ -33,6 +33,41 @@ pub const VAR_ENV: &str = "RPA_LEDGER";
 /// racine du dépôt, ou passer un chemin explicite).
 pub const EXEMPLE_RELATIF: &str = "examples/ledger/main.beancount";
 
+/// Échelon qui a déterminé le chemin résolu (traçabilité, affichages et
+/// réglages de l'interface).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SourceResolution {
+    /// Montrer explicitement sur la ligne de commande.
+    Argument,
+    /// Variable d'environnement [`VAR_ENV`].
+    VariableEnv,
+    /// Champ `chemin_ledger` de la config locale (fichier de préférences).
+    ChampConfig,
+    /// Repli automatique : ledger d'exemple du dépôt (données fictives).
+    RepliExemple,
+}
+
+impl SourceResolution {
+    /// Libellé humain de l'échelon.
+    #[must_use]
+    pub fn libelle(self) -> &'static str {
+        match self {
+            Self::Argument => "argument de la ligne de commande",
+            Self::VariableEnv => "variable `RPA_LEDGER`",
+            Self::ChampConfig => "champ `chemin_ledger` de la config locale",
+            Self::RepliExemple => "repli : ledger d'exemple du dépôt",
+        }
+    }
+
+    /// Vrai si l'échelon gagnant surcharge le champ de config (argument ou
+    /// variable `RPA_LEDGER`) : la GUI désactive alors ses réglages
+    /// persistés tant que cette source est en place.
+    #[must_use]
+    pub fn surcharge_config(self) -> bool {
+        matches!(self, Self::Argument | Self::VariableEnv)
+    }
+}
+
 /// Nature du ledger résolu.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ModeLedger {
@@ -61,13 +96,15 @@ impl fmt::Display for ModeLedger {
     }
 }
 
-/// Résultat de la résolution : chemin, mode et avertissement éventuel.
+/// Résultat de la résolution : chemin, mode, source et avertissement.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ResolutionLedger {
     /// Chemin du `main.beancount` à charger.
     pub chemin: PathBuf,
     /// Nature du ledger auquel ce chemin correspond.
     pub mode: ModeLedger,
+    /// Échelon gagnant de la chaîne de résolution.
+    pub source: SourceResolution,
     /// Non vide si la résolution a un problème à signaler à l'utilisateur
     /// (chemin configuré introuvable, exemple absent…). Ne remplace pas
     /// l'erreur de chargement : le lecteur affichera la sienne en bannière.
@@ -99,17 +136,14 @@ pub fn resoudre_ledger(
     // 1..=3 : chemins explicites en ordre de priorité ; le premier non vide
     // gagne, qu'il existe ou non (jamais de repli silencieux sur l'exemple).
     let explicites = [
-        (
-            argument.map(Path::to_path_buf),
-            "argument de la ligne de commande",
-        ),
+        (argument.map(Path::to_path_buf), SourceResolution::Argument),
         (
             var_env_nettoyee(var_env).map(PathBuf::from),
-            "variable `RPA_LEDGER`",
+            SourceResolution::VariableEnv,
         ),
         (
             champ_config.map(Path::to_path_buf),
-            "champ `chemin_ledger` de la config locale",
+            SourceResolution::ChampConfig,
         ),
     ];
     for (chemin_opt, source) in explicites {
@@ -118,15 +152,18 @@ pub fn resoudre_ledger(
             return ResolutionLedger {
                 chemin,
                 mode: ModeLedger::Reel,
+                source,
                 avertissement: None,
             };
         }
         return ResolutionLedger {
             avertissement: Some(format!(
-                "configuré via {source} mais introuvable — pas de repli sur les données fictives"
+                "configuré via {} mais introuvable — pas de repli sur les données fictives",
+                source.libelle()
             )),
             chemin,
             mode: ModeLedger::Reel,
+            source,
         };
     }
 
@@ -142,6 +179,7 @@ pub fn resoudre_ledger(
     ResolutionLedger {
         chemin: exemple,
         mode: ModeLedger::Exemple,
+        source: SourceResolution::RepliExemple,
         avertissement,
     }
 }
@@ -183,6 +221,7 @@ mod tests {
             Some(&config_chemin),
         );
         assert_eq!(resolu.mode, ModeLedger::Reel);
+        assert_eq!(resolu.source, SourceResolution::Argument);
         assert_eq!(resolu.chemin, env_chemin);
         assert_eq!(resolu.avertissement, None);
         nettoyer(&env_chemin);
@@ -196,6 +235,7 @@ mod tests {
         let resolu = resoudre_ledger(None, env_chemin.to_str(), Some(&config_chemin));
         assert_eq!(resolu.chemin, env_chemin);
         assert_eq!(resolu.mode, ModeLedger::Reel);
+        assert_eq!(resolu.source, SourceResolution::VariableEnv);
         assert_eq!(resolu.avertissement, None);
         nettoyer(&env_chemin);
         nettoyer(&config_chemin);
@@ -207,6 +247,7 @@ mod tests {
         let resolu = resoudre_ledger(None, None, Some(&config_chemin));
         assert_eq!(resolu.chemin, config_chemin);
         assert_eq!(resolu.mode, ModeLedger::Reel);
+        assert_eq!(resolu.source, SourceResolution::ChampConfig);
         assert_eq!(resolu.avertissement, None);
         nettoyer(&config_chemin);
     }
@@ -235,6 +276,7 @@ mod tests {
         let resolu = resoudre_ledger(None, None, None);
         assert_eq!(resolu.mode, ModeLedger::Exemple);
         assert_eq!(resolu.chemin, PathBuf::from(EXEMPLE_RELATIF));
+        assert_eq!(resolu.source, SourceResolution::RepliExemple);
         assert!(resolu.mode.est_exemple());
     }
 
@@ -242,5 +284,13 @@ mod tests {
     fn mode_exemple_detecte_le_badge() {
         assert!(!ModeLedger::Reel.est_exemple());
         assert!(ModeLedger::Exemple.est_exemple());
+    }
+
+    #[test]
+    fn surcharge_de_la_config_uniquement_par_arg_ou_env() {
+        assert!(SourceResolution::Argument.surcharge_config());
+        assert!(SourceResolution::VariableEnv.surcharge_config());
+        assert!(!SourceResolution::ChampConfig.surcharge_config());
+        assert!(!SourceResolution::RepliExemple.surcharge_config());
     }
 }

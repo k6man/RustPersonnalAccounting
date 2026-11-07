@@ -285,9 +285,13 @@ largeur, barres carte budget 180→240 ; fenêtre 1200×760 → 1300×800 (min 9
 
 ### Séparation exemple / vrai ledger — restes (jalon 8, 2026-11-07)
 
-- [ ] Champ `chemin_ledger` non éditable depuis l'interface : ajouter un
-  sélecteur de fichier (et un bouton « utiliser le ledger d'exemple » qui
-  efface le champ) dans la GUI.
+- [x] Sélecteur de fichier pour `chemin_ledger` dans la GUI (2026-11-07) :
+  fenêtre « Ledger actif » (bouton `Ledger…` de la barre d'en-tête) —
+  résolution affichée (chemin, source, avertissement), `rfd` picker
+  « Choisir un main.beancount… », bouton « Utiliser le ledger d'exemple »
+  (efface le champ), effet au prochain lancement ; réglages désactivés si la
+  source est argument/`RPA_LEDGER` (`SourceResolution::surcharge_config`).
+  Dép. `rfd 0.17` (MIT/Apache-2.0).
 - [ ] Vérifications visuelles des quatre échelons de résolution (argument >
   `RPA_LEDGER` > champ config > exemple) : badge, bannière d'échec du
   chargement, flash d'avertissement.

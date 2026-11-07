@@ -12,6 +12,8 @@ use std::sync::mpsc::{Receiver, Sender};
 
 use egui::RichText;
 
+use household_core::ResolutionLedger;
+
 use crate::viewmodel::UiData;
 use crate::worker::{Command, LoadOutcome};
 
@@ -82,8 +84,9 @@ impl Onglet {
 /// L'application.
 pub struct FoyerApp {
     main: PathBuf,
-    /// Vrai si `main` est le ledger d'exemple du dépôt (badge d'affichage).
-    mode_exemple: bool,
+    /// Résolution complète du ledger (chemin, mode, source) : affichée dans
+    /// la barre d'en-tête (badge « exemple ») et dans la fenêtre « Ledger ».
+    resolu: ResolutionLedger,
     /// Émetteur de commandes vers le worker (cloné pour le watcher).
     cmd_tx: Sender<Command>,
     /// Récepteur des résultats du worker.
@@ -114,6 +117,8 @@ pub struct FoyerApp {
     git: crate::views::git::UiState,
     /// État de l'écran Graphiques (mini-onglet + période).
     graphiques: crate::views::graphiques::UiState,
+    /// Fenêtre « Ledger » ouverte ? (sélecteur du vrai ledger / retour exemple)
+    params_ledger: bool,
     /// Données git du dernier chargement (`None` tant que non demandées).
     git_donnees: Option<crate::worker::GitDonnees>,
     /// Préférences GUI (rollover par famille…) — TOML local, jamais le ledger.
@@ -122,9 +127,11 @@ pub struct FoyerApp {
 
 impl FoyerApp {
     /// Crée l'app : worker + watcher + premier chargement asynchrone.
-    /// `mode_exemple` (résolution [`household_core::ModeLedger::Exemple`])
-    /// affiche le badge « données fictives » dans la barre d'en-tête.
-    pub fn new(cc: &eframe::CreationContext<'_>, main: PathBuf, mode_exemple: bool) -> Self {
+    /// `resolu` est le résultat de [`household_core::resoudre_ledger`] : il
+    /// porte le chemin, le mode (badge « exemple » le cas échéant) et la
+    /// source (affichage dans la fenêtre « Ledger »).
+    pub fn new(cc: &eframe::CreationContext<'_>, resolu: ResolutionLedger) -> Self {
+        let main = resolu.chemin.clone();
         let (cmd_tx, outcome_rx) = crate::worker::demarrer(cc.egui_ctx.clone(), main.clone());
         let watcher = crate::worker::demarrer_watcher(&main, cmd_tx.clone());
         let mut fenetres_ouvertes = [false; Onglet::TOUS.len()];
@@ -140,7 +147,7 @@ impl FoyerApp {
         }
         let app = Self {
             main,
-            mode_exemple,
+            resolu,
             cmd_tx,
             outcome_rx,
             _watcher: watcher,
@@ -155,6 +162,7 @@ impl FoyerApp {
             budget: crate::views::budget::UiState::nouveau(crate::worker::aujourd_hui().year()),
             git: crate::views::git::UiState::nouveau(),
             graphiques: crate::views::graphiques::UiState::nouveau(),
+            params_ledger: false,
             git_donnees: None,
             config: crate::config::Config::charger(),
         };
@@ -168,6 +176,93 @@ impl FoyerApp {
     fn demander_rechargement(&mut self) {
         self.en_chargement = true;
         self.cmd_tx.send(Command::Reload).ok();
+    }
+
+    /// Fenêtre « Ledger actif » : état de la résolution, sélecteur de fichier
+    /// pour le vrai ledger (persisté dans la config locale), retour à
+    /// l'exemple. Les réglages ne prennent effet qu'au prochain lancement.
+    fn reglages_ledger(&mut self, ui: &mut egui::Ui) {
+        let surchargee = self.resolu.source.surcharge_config();
+        if surchargee {
+            ui.colored_label(
+                egui::Color32::from_rgb(0xd8, 0x6a, 0x0e),
+                format!(
+                    "⚠ Chemin imposé par la {} : le champ `chemin_ledger` est inert\
+                     tant que cette source est en place.",
+                    self.resolu.source.libelle()
+                ),
+            );
+            ui.add_space(4.0);
+        }
+        ui.horizontal(|ui| {
+            ui.label("Ledger chargé cette session :");
+            ui.monospace(self.main.display().to_string());
+        });
+        ui.label(format!("Source : {}", self.resolu.source.libelle()));
+        if let Some(avertissement) = &self.resolu.avertissement {
+            ui.colored_label(
+                egui::Color32::from_rgb(0xd8, 0x3b, 0x2f),
+                format!("⚠ {avertissement}"),
+            );
+        }
+        ui.add_space(6.0);
+        ui.separator();
+
+        ui.horizontal(|ui| {
+            if ui
+                .add_enabled(!surchargee, egui::Button::new("Choisir un main.beancount…"))
+                .clicked()
+                && let Some(fichier) = rfd::FileDialog::new()
+                    .set_title("Ledger du foyer — main.beancount")
+                    .add_filter("Beancount", &["beancount"])
+                    .add_filter("Tous les fichiers", &["*"])
+                    .pick_file()
+            {
+                self.config.chemin_ledger = Some(fichier.clone());
+                self.flash_apres_persistance(format!(
+                    "Ledger enregistré ({}) — effet au prochain lancement.",
+                    fichier.display()
+                ));
+            }
+            if ui
+                .add_enabled(
+                    !surchargee,
+                    egui::Button::new("Utiliser le ledger d'exemple"),
+                )
+                .on_hover_text("Efface le champ `chemin_ledger` de la config locale.")
+                .clicked()
+            {
+                self.config.chemin_ledger = None;
+                self.flash_apres_persistance(
+                    "Retour au ledger d'exemple enregistré — effet au prochain \
+                     lancement."
+                        .to_string(),
+                );
+            }
+            if ui.button("Fermer").clicked() {
+                self.params_ledger = false;
+            }
+        });
+        ui.add_space(4.0);
+        ui.label(
+            RichText::new(
+                "Prend effet au prochain lancement de l'application. Le vrai \
+                 ledger vit hors du dépôt (données réelles) ; l'exemple est \
+                 une recette avec des données fictives.",
+            )
+            .weak()
+            .small(),
+        );
+    }
+
+    /// Persiste la config et pousse le message de résultat dans le flash.
+    fn flash_apres_persistance(&mut self, succes: String) {
+        match self.config.sauver() {
+            Ok(()) => self.flash = Some((succes, false)),
+            Err(erreur) => {
+                self.flash = Some((format!("Préférences non persistées : {erreur}"), true))
+            }
+        }
     }
 
     /// Ouvre une fenêtre d'écran. L'écran Git relit son statut à chaque
@@ -257,7 +352,7 @@ impl eframe::App for FoyerApp {
             ui.add_space(4.0);
             ui.horizontal(|ui| {
                 ui.label(RichText::new("Comptabilité du foyer").heading().strong());
-                if self.mode_exemple {
+                if self.resolu.mode.est_exemple() {
                     // Avertissement permanent : recette sur données fictives.
                     ui.label(
                         RichText::new("LEDGER D'EXEMPLE — données fictives")
@@ -283,6 +378,9 @@ impl eframe::App for FoyerApp {
                     }
                     if ui.button("Recharger").clicked() {
                         self.demander_rechargement();
+                    }
+                    if ui.button("Ledger…").clicked() {
+                        self.params_ledger = true;
                     }
                 });
             });
@@ -437,6 +535,19 @@ impl eframe::App for FoyerApp {
                 });
                 self.fenetres_ouvertes[index] = ouvert;
             }
+        }
+
+        // Fenêtre « Ledger » : sélecteur du vrai ledger / retour à l'exemple.
+        if self.params_ledger {
+            let mut ouvert = self.params_ledger;
+            egui::Window::new("Ledger actif")
+                .open(&mut ouvert)
+                .resizable(false)
+                .default_size([560.0, 240.0])
+                .show(ui.ctx(), |ui| {
+                    self.reglages_ledger(ui);
+                });
+            self.params_ledger = ouvert;
         }
     }
 }

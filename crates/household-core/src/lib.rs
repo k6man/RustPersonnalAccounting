@@ -28,6 +28,8 @@ pub mod snapshot;
 pub mod writer;
 
 pub use error::CoreError;
-pub use resolution::{EXEMPLE_RELATIF, ModeLedger, ResolutionLedger, VAR_ENV, resoudre_ledger};
+pub use resolution::{
+    EXEMPLE_RELATIF, ModeLedger, ResolutionLedger, SourceResolution, VAR_ENV, resoudre_ledger,
+};
 pub use snapshot::{AccountBalance, AccountInfo, Ceiling, Snapshot, SourceRef, Through};
 pub use writer::{append_transaction, monthly_file, remove_transaction, replace_transaction};

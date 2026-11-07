@@ -10,7 +10,7 @@
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use household_core::{ModeLedger, VAR_ENV, resoudre_ledger};
+use household_core::{VAR_ENV, resoudre_ledger};
 
 fn main() -> eframe::Result {
     // Chaîne de résolution partagée (household-core::resolution) : jamais de
@@ -25,7 +25,6 @@ fn main() -> eframe::Result {
         // Rendu aussi en bannière par le lecteur si le chargement échoue.
         eprintln!("⚠ {avertissement}");
     }
-    let mode_exemple = resolu.mode == ModeLedger::Exemple;
 
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
@@ -37,12 +36,6 @@ fn main() -> eframe::Result {
     eframe::run_native(
         "Comptabilité du foyer",
         options,
-        Box::new(move |cc| {
-            Ok(Box::new(household_gui::app::FoyerApp::new(
-                cc,
-                resolu.chemin.clone(),
-                mode_exemple,
-            )))
-        }),
+        Box::new(move |cc| Ok(Box::new(household_gui::app::FoyerApp::new(cc, resolu)))),
     )
 }
