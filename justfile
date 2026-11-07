@@ -22,12 +22,13 @@ clippy:
 test:
     cargo test --workspace
 
-# Validation du ledger via le binaire rustledger (installé par brew).
+# Validation du ledger d'exemple (données fictives, recette) via le binaire
+# rustledger (installé par brew).
 check-ledger:
-    @if command -v rledger >/dev/null; then rledger check ledger/main.beancount; \
+    @if command -v rledger >/dev/null; then rledger check examples/ledger/main.beancount; \
     else \
       echo "rledger absent — repli household-cli (binaire du crate household-core)"; \
-      cargo run -q -p household-core --bin household-cli -- check ledger/main.beancount; \
+      cargo run -q -p household-core --bin household-cli -- check examples/ledger/main.beancount; \
     fi
 
 check: fmt-check clippy test check-ledger

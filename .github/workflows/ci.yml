@@ -51,4 +51,4 @@ jobs:
       - name: Installer rustledger
         run: cargo binstall -y rustledger
       - name: Valider le ledger
-        run: rledger check ledger/main.beancount
+        run: rledger check examples/ledger/main.beancount

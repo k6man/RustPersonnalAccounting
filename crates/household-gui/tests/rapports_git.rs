@@ -12,7 +12,10 @@ use rustledger_core::{AccountTypes, Directive, NaiveDate};
 
 use household_gui::viewmodel;
 
-const MAIN: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../ledger/main.beancount");
+const MAIN: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../examples/ledger/main.beancount"
+);
 
 fn donnees(annee: i16) -> Option<(Vec<Directive>, AccountTypes, viewmodel::RapportsData)> {
     let main = std::path::Path::new(MAIN);

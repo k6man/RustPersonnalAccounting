@@ -10,24 +10,32 @@ toute modification** — l'état courant et la prochaine action y sont toujours 
 just check          # fmt-check + clippy -D warnings + cargo test --workspace + rledger check
 just run            # GUI (cargo run -p household-gui)
 cargo test -p household-gui --test budget_gui grille_2026   # un seul test
-cargo run -q -p household-core --bin household-cli -- check ledger/main.beancount  # repli si rledger absent
+cargo run -q -p household-core --bin household-cli -- check examples/ledger/main.beancount  # repli si rledger absent
 ```
 
 - Clippy et tests doivent être verts avec `-D warnings` ; `unsafe_code = "forbid"` (lints workspace).
 - **`just setup` à faire après un clone** : active `githooks/` (pre-commit valide le ledger).
 - CI (`.github/workflows/ci.yml`) rejoue fmt, clippy, tests et `rledger check` sur main/develop.
 
-## Le ledger est la source de vérité — ne l'éditez pas arbitrairement
+## Le ledger d'exemple vs le vrai ledger du foyer
 
-- `ledger/main.beancount` (options + includes globs) : **jamais édité par les outils**, sauf
-  l'ajout d'un include budget. Une directive par ligne dans `ledger/budgets/AAAA.beancount`.
+- **`examples/ledger/`** (données **fictives**) est le ledger de **recette** du
+  logiciel : validé par `rledger check` en CI, recopié en scratch par les tests,
+  jamais édité à la main hors writer. Ce n'est **pas** la comptabilité réelle —
+  uniquement des données fictives.
+- **Le vrai ledger du foyer vit hors du dépôt** (propre arborescence / dépôt git).
+  Il est désigné par la chaîne de résolution `household-core::resolution` :
+  argument CLI > `RPA_LEDGER` > champ `chemin_ledger` de
+  `~/.config/rust-personal-accounting.toml` > repli sur l'exemple avec badge.
+- `examples/ledger/main.beancount` (options + includes globs) : **jamais édité par les outils**, sauf
+  l'ajout d'un include budget. Une directive par ligne dans `examples/ledger/budgets/AAAA.beancount`.
 - Toute écriture passe par les writers de `household-core` / `household-budget` :
   copie scratch + pré-validation + écriture atomique (tmp + rename) + blocs canoniques
   déterministes (diffs git propres). Ne réinventez pas ce chemin.
-- Les tests ne touchent **jamais au ledger réel** : chaque suite d'intégration recopie le
+- Les tests ne touchent **jamais à l'exemple du dépôt** : chaque suite d'intégration recopie le
   ledger dans un scratch temporaire via `tests/common/mod.rs` (suffixed par un compteur
   atomique — la résolution de l'horloge macOS ne suffit pas pour des tests parallèles).
-- `ledger/transactions/AAAA/MM.beancount` : un fichier par mois ; assertions de contrôle
+- `examples/ledger/transactions/AAAA/MM.beancount` : un fichier par mois ; assertions de contrôle
   au 2026-04-01 (CC = 6877.39) dans le ledger d'exemple.
 
 ## Conventions non négociables
@@ -79,7 +87,9 @@ cargo run -q -p household-core --bin household-cli -- check ledger/main.beancoun
   shell (via `open` : panic winit avant la fenêtre), `kill -9` + `pkill -9 -f
   UserNotificationCenter` (un SIGTERM ouvre un dialogue de crash qui vole l'écran),
   prévoir `caffeinate -dims` pendant une campagne de captures.
-- Préférences GUI (rollover par famille) : `~/.config/compta-foyer.toml`, **jamais dans le ledger**.
+- Préférences app (chemin du vrai ledger, rollover par famille) :
+  `~/.config/rust-personal-accounting.toml` (migré depuis `compta-foyer.toml`,
+  v0.1), **jamais dans le ledger**.
 
 ## Git
 

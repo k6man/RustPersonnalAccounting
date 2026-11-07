@@ -9,7 +9,10 @@ mod common;
 use household_core::{Snapshot, Through};
 use rust_decimal_macros::dec;
 
-const MAIN: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../ledger/main.beancount");
+const MAIN: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../examples/ledger/main.beancount"
+);
 
 fn snapshot() -> Option<Snapshot> {
     let main = std::path::Path::new(MAIN);

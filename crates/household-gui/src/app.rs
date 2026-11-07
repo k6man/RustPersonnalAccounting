@@ -82,6 +82,8 @@ impl Onglet {
 /// L'application.
 pub struct FoyerApp {
     main: PathBuf,
+    /// Vrai si `main` est le ledger d'exemple du dépôt (badge d'affichage).
+    mode_exemple: bool,
     /// Émetteur de commandes vers le worker (cloné pour le watcher).
     cmd_tx: Sender<Command>,
     /// Récepteur des résultats du worker.
@@ -120,7 +122,9 @@ pub struct FoyerApp {
 
 impl FoyerApp {
     /// Crée l'app : worker + watcher + premier chargement asynchrone.
-    pub fn new(cc: &eframe::CreationContext<'_>, main: PathBuf) -> Self {
+    /// `mode_exemple` (résolution [`household_core::ModeLedger::Exemple`])
+    /// affiche le badge « données fictives » dans la barre d'en-tête.
+    pub fn new(cc: &eframe::CreationContext<'_>, main: PathBuf, mode_exemple: bool) -> Self {
         let (cmd_tx, outcome_rx) = crate::worker::demarrer(cc.egui_ctx.clone(), main.clone());
         let watcher = crate::worker::demarrer_watcher(&main, cmd_tx.clone());
         let mut fenetres_ouvertes = [false; Onglet::TOUS.len()];
@@ -136,6 +140,7 @@ impl FoyerApp {
         }
         let app = Self {
             main,
+            mode_exemple,
             cmd_tx,
             outcome_rx,
             _watcher: watcher,
@@ -252,6 +257,15 @@ impl eframe::App for FoyerApp {
             ui.add_space(4.0);
             ui.horizontal(|ui| {
                 ui.label(RichText::new("Comptabilité du foyer").heading().strong());
+                if self.mode_exemple {
+                    // Avertissement permanent : recette sur données fictives.
+                    ui.label(
+                        RichText::new("LEDGER D'EXEMPLE — données fictives")
+                            .small()
+                            .strong()
+                            .color(egui::Color32::from_rgb(0x8a, 0x63, 0x0e)),
+                    );
+                }
                 if let Some(donnees) = &self.donnees {
                     ui.label(
                         RichText::new(format!(

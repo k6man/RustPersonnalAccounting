@@ -354,7 +354,8 @@ mod tests {
 
     #[test]
     fn sample_ledger_loads_and_reports_balances() {
-        let main = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../ledger/main.beancount");
+        let main =
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../examples/ledger/main.beancount");
         if !main.exists() {
             eprintln!("ledger absent de la sandbox, test ignoré");
             return;

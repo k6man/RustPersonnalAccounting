@@ -1,7 +1,9 @@
 # Configuration rledger du projet (cf. `rledger config init --project`).
-# Le fichier par défaut pointe sur le ledger du foyer : toutes les
-# commandes `rledger …` marchent sans argument depuis la racine du dépôt.
+# Le fichier par défaut pointe sur le ledger d'EXEMPLE (données fictives) :
+# toutes les commandes `rledger …` marchent sans argument depuis la racine du
+# dépôt, et servent de recette au logiciel. Le vrai ledger du foyer vit hors
+# de ce dépôt — cf. README « Utiliser avec votre vrai ledger ».
 # (Cas d'usage principal : `rledger report budget --from … --to … --children`.)
 
 [default]
-file = "ledger/main.beancount"
+file = "examples/ledger/main.beancount"

@@ -7,7 +7,10 @@ use rust_decimal_macros::dec;
 use household_gui::viewmodel::{self, EtatJauge};
 use rustledger_core::NaiveDate;
 
-const MAIN: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../ledger/main.beancount");
+const MAIN: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../examples/ledger/main.beancount"
+);
 
 fn donnees() -> Option<viewmodel::UiData> {
     let main = std::path::Path::new(MAIN);

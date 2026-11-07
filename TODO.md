@@ -21,6 +21,11 @@ reste au backlog « Revue de code » (À faire).
 **Fenêtre « Graphiques » (2026-11-01/02)** : 7ᵉ écran flottant implémenté et
 visuellement vérifié (répartition, cascade annuelle, budget vs réel) — 80
 tests verts, `just check` ✓ ; livré dans le commit suivant.
+**Jalon 8 (2026-11-07)** : séparation ledger d'exemple (`examples/ledger/`,
+données fictives), vrai ledger du foyer configuré hors dépôt
+(`household-core::resolution` : argument > `RPA_LEDGER` > champ
+`chemin_ledger` de `~/.config/rust-personal-accounting.toml`), config
+renommée avec migration, badge GUI. Suite de l'audit RGPD du dépôt.
 **Prochaine action : usage réel** (saisie quotidienne, budgets 2027 via l'éditeur).
 
 ---
@@ -277,6 +282,17 @@ largeur, barres carte budget 180→240 ; fenêtre 1200×760 → 1300×800 (min 9
 `cargo check`/fmt/clippy/tests/`rledger check` verts après passe.
 
 ## À faire
+
+### Séparation exemple / vrai ledger — restes (jalon 8, 2026-11-07)
+
+- [ ] Champ `chemin_ledger` non éditable depuis l'interface : ajouter un
+  sélecteur de fichier (et un bouton « utiliser le ledger d'exemple » qui
+  efface le champ) dans la GUI.
+- [ ] Vérifications visuelles des quatre échelons de résolution (argument >
+  `RPA_LEDGER` > champ config > exemple) : badge, bannière d'échec du
+  chargement, flash d'avertissement.
+- [ ] ADR (ou complément ADR-002) : le vrai ledger du foyer est un dépôt git
+  séparé — y relancer `just setup` une première fois pour ses hooks.
 
 ### Revue de code — suite (2026-11-01, post-v0.1.0)
 
@@ -635,6 +651,17 @@ crates ~/.cargo/registry/…-0.24.0 ; à revoir si épinglage un jour déplacé)
 
 ## Fait
 
+- [x] **Jalon 8 — Séparation ledger d'exemple / vrai ledger du foyer (2026‑11‑07)** :
+  suite à l'audit PII/RGPD du dépôt (0 secret, 0 email nominatif ; question du ledger
+  réel vs exemple soulevée). `/ledger` → `examples/ledger/` (fail-safe), bannières
+  « données fictives » + `examples/ledger/README.md` ; module pur
+  `household-core::resolution` (`resoudre_ledger` : argument > `RPA_LEDGER` >
+  champ `chemin_ledger` > repli exemple ; jamais de repli silencieux si le
+  chemin configuré est introuvable) ; CLI `household-cli` sans argument résout
+  via la chaîne ; config GUI renommée `~/.config/rust-personal-accounting.toml`
+  (migration douce depuis `compta-foyer.toml`, champ `chemin_ledger`) ; badge
+  GUI « LEDGER D'EXEMPLE — données fictives » ; chemins mis à jour dans
+  justfile / hook pre-commit / CI / tests. 14 nouveaux tests verts.
 - [x] Étape 0 — reconnaissance rustledger (2026‑10‑29) : lecture du dépôt `main` (3 434 commits) et
   crates.io — conclusion dans « Reconnaissance » ci‑dessous. **Décisions validées** : licence GPL‑3.0 ;
   budget d'épargne sur les comptes `Assets` destinataires.

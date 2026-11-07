@@ -8,7 +8,7 @@ fn main() {
     let chemin = std::env::args()
         .nth(1)
         .map(std::path::PathBuf::from)
-        .unwrap_or_else(|| std::path::PathBuf::from("ledger/main.beancount"));
+        .unwrap_or_else(|| std::path::PathBuf::from("examples/ledger/main.beancount"));
     let snapshot = household_core::Snapshot::load(&chemin).expect("snapshot");
     let courbe = household_gui::viewmodel::build(&snapshot, household_gui::worker::aujourd_hui())
         .expect("ui-data")

@@ -10,11 +10,14 @@ use std::time::{SystemTime, UNIX_EPOCH};
 /// Copie du répertoire ledger dans un scratch ; retourne le chemin du
 /// `main.beancount` de la copie (aucun test ne touche au ledger réel).
 pub fn ledger_copy() -> PathBuf {
-    let real = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../ledger/main.beancount");
+    let real =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../examples/ledger/main.beancount");
     if !real.exists() {
         panic!("ledger échantillon introuvable pour les tests d'intégration");
     }
-    let root = real.parent().expect("ledger/main.beancount a un parent");
+    let root = real
+        .parent()
+        .expect("examples/ledger/main.beancount a un parent");
     let scratch = temp_root();
     let ledger = scratch.join("ledger");
     copy_inner(root, &ledger).expect("copie du ledger");

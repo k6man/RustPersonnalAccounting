@@ -34,10 +34,33 @@ just setup
 
 ```sh
 cargo run -p household-gui   # GUI
-just check                   # fmt + clippy + tests + validation du ledger
+just check                   # fmt + clippy + tests + validation du ledger d'exemple
 just test                    # cargo test --workspace
-rledger check ledger/main.beancount   # validation ledger seule
+rledger check examples/ledger/main.beancount   # validation du ledger d'exemple
 ```
+
+## Utiliser avec votre vrai ledger
+
+Le dépôt ne contient **que des données fictives** (`examples/ledger/`) : le
+vrai ledger du foyer vit hors de ce dépôt, dans sa propre arborescence
+(idéalement son propre dépôt git). Il est désigné par la chaîne de résolution
+`household-core::resolution`, du plus précis au plus implicite :
+
+1. **argument** : `cargo run -p household-gui -- /chemin/vrai/main.beancount`
+   (ou `household-cli check /chemin/vrai/main.beancount`) ;
+2. **variable d'environnement** : `RPA_LEDGER=/chemin/vrai/main.beancount` ;
+3. **fichier de préférences** : dans `~/.config/rust-personal-accounting.toml` :
+
+   ```toml
+   chemin_ledger = "/chemin/vrai/main.beancount"
+   ```
+
+4. **repli** : le ledger d'exemple du dépôt — l'interface affiche alors le
+   badge « LEDGER D'EXEMPLE — données fictives ».
+
+Un chemin configuré mais introuvable est signalé clairement **et ne se replie
+pas silencieusement sur l'exemple** (éviter d'éditer des données fictives en
+croyant écrire dans le vrai ledger).
 
 ## Les écrans
 
@@ -72,14 +95,16 @@ rledger check ledger/main.beancount   # validation ledger seule
 ## Structure
 
 ```
-/ledger                     # dépôt de comptabilité, texte, versionné (source de vérité)
+/examples
+  /ledger                   # ledger d'EXEMPLE (données fictives), recette & golden de tests
   main.beancount            # options + includes (globs par année/budget)
   accounts.beancount        # open/close + plan de comptes (noms français, sans accents)
   commodities.beancount
   /budgets/2026.beancount   # budgets : custom "budget" (convention Fava)
   /transactions/2025…       # un fichier par mois ; croisement par date
+  README.md                 # rappel : exemple ≠ vrai ledger (hors dépôt)
 /crates
-  /household-core           # wrapper rustledger : load, snapshot, writer transactions (atomique)
+  /household-core           # wrapper rustledger : load, snapshot, resolution, writer transactions (atomique)
   /household-budget         # budget pur : grille postes×12 mois, rollover, duplication d'année
   /household-git            # git2 : statut, commit (avec revalidation), historique
   /household-gui            # eframe/egui : état applicatif / commandes worker / vues

@@ -1,5 +1,7 @@
-//! Couche d'accès au ledger beancount du foyer.
+//! Couche d'accès au ledger beancount (existant réel ou exemple de recette).
 //!
+//! - **Résolution** : [`resolution`] — chaîne unique (argument >
+//!   `RPA_LEDGER` > config GUI > exemple du dépôt).
 //! - **Chargement** : [`Snapshot::load`] exécute le pipeline rustledger complet
 //!   (`rustledger_loader::load`, plugins, booking STRICT, validation) et
 //!   expose l'état immuable : directives **sourcées** (fichier + span, pour
@@ -21,9 +23,11 @@
 //! `EndOfDay`).
 
 pub mod error;
+pub mod resolution;
 pub mod snapshot;
 pub mod writer;
 
 pub use error::CoreError;
+pub use resolution::{EXEMPLE_RELATIF, ModeLedger, ResolutionLedger, VAR_ENV, resoudre_ledger};
 pub use snapshot::{AccountBalance, AccountInfo, Ceiling, Snapshot, SourceRef, Through};
 pub use writer::{append_transaction, monthly_file, remove_transaction, replace_transaction};
