@@ -52,3 +52,28 @@ jobs:
         run: cargo binstall -y rustledger
       - name: Valider le ledger
         run: rledger check examples/ledger/main.beancount
+
+  # Audit des vulnérabilités transitives (advisories RustSec) — on ne clique
+  # pas sur `--all-features` (l'AUDIT) ; c'est la ligne de défaut qui clique.
+  # Résultat attendu : aucun advisory non ignoré (5 écarts connus sont « non
+  # vulnérables » transitoires : 4 non maintenus + 1 retiré).
+  cargo-audit:
+    name: Cargo audit (advisories)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo audit
+
+  # Dépendance : licenses (GPL only + forbidden), bans (versions multiples),
+  # sources (registries git) — full allow list généraliste dans deny.toml.
+  # On garde `WHICH` explicite pour ne pas indexer un chemin absente.
+  cargo-deny:
+    name: Cargo deny (advisories/bans/licenses/sources)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo deny check --all-features advisories,licenses,bans,sources
