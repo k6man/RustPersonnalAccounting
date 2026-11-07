@@ -320,8 +320,17 @@ largeur, barres carte budget 180→240 ; fenêtre 1200×760 → 1300×800 (min 9
   - écran d'accueil : un échec affichait un spinner à l'infini ; désormais
     « ⚠ Chargement impossible — voir la bannière ci-dessus » (spinner réservé
     au chargement réel, y compris rechargement après échec).
-- [ ] ADR (ou complément ADR-002) : le vrai ledger du foyer est un dépôt git
-  séparé — y relancer `just setup` une première fois pour ses hooks.
+- [x] ADR-004 « vrai ledger = dépôt git séparé » (2026-11-07,
+  `docs/ADR-004-vrai-ledger-depot-separe.md`) — recette
+  `just setup-ledger <dossier>` attache `githooks/` au dépôt du ledger
+  (chemin absolu, une seule fois) ; le hook `pre-commit` auto-détecte le
+  point d'entrée dans le dépôt courant (`examples/ledger/…` ici,
+  `main.beancount` à la racine ailleurs) — testé sur un dépôt de ledger
+  factice : commit valide ✓, commit invalide refusé ✓.
+  **A faire chez l'utilisatrice** : créer le dépôt du vrai ledger
+  (`git init` + `main.beancount` à la racine) puis lancer
+  `just setup-ledger …` — rien à attacher ce jour (aucune réelle
+  configuration de ledger sur cette machine).
 - [ ] Cas limite (vu en vérif.) : pointer explicitement (argument ou
   `RPA_LEDGER`) sur `examples/ledger/main.beancount` donne le mode Réel
   SANS badge — la détection d'exemple devrait se faire sur le chemin

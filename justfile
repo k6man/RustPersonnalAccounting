@@ -10,6 +10,19 @@ setup:
     chmod +x githooks/pre-commit
     @echo "hooksPath = githooks ✓  (rledger : brew install rustledger)"
 
+# Attache le hook pre-commit de CE dépôt à un dépôt de ledger externe
+# (le vrai ledger du foyer, cf. docs/ADR-004) — une seule fois après
+# création de ce dépôt. Usage : just setup-ledger /chemin/vers/ledger
+setup-ledger dossier:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    git -C "{{dossier}}" rev-parse --show-toplevel >/dev/null 2>&1 \
+        || { echo "« {{dossier}} » n'est pas un dépôt git ($(cd '{{dossier}}' 2>/dev/null || echo '?'))" >&2; exit 1; }
+    [ -f "{{dossier}}/main.beancount" ] \
+        || { echo "ERREUR : pas de main.beancount à la racine de « {{dossier}} » (convention ADR-004)" >&2; exit 1; }
+    git -C "{{dossier}}" config core.hooksPath "$PWD/githooks"
+    echo "hooks du ledger externe → $PWD/githooks ✓"
+
 fmt:
     cargo fmt --all
 

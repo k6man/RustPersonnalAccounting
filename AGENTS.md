@@ -23,10 +23,14 @@ cargo run -q -p household-core --bin household-cli -- check examples/ledger/main
   logiciel : validé par `rledger check` en CI, recopié en scratch par les tests,
   jamais édité à la main hors writer. Ce n'est **pas** la comptabilité réelle —
   uniquement des données fictives.
-- **Le vrai ledger du foyer vit hors du dépôt** (propre arborescence / dépôt git).
-  Il est désigné par la chaîne de résolution `household-core::resolution` :
-  argument CLI > `RPA_LEDGER` > champ `chemin_ledger` de
-  `~/.config/rust-personal-accounting.toml` > repli sur l'exemple avec badge.
+- **Le vrai ledger du foyer vit hors du dépôt** : dépôt git **séparé**
+  (ADR-004), `main.beancount` à sa racine. Il est désigné par la chaîne de
+  résolution `household-core::resolution` : argument CLI > `RPA_LEDGER` >
+  champ `chemin_ledger` de `~/.config/rust-personal-accounting.toml` > repli
+  sur l'exemple avec badge. Après création de ce dépôt :
+  `just setup-ledger <dossier-du-ledger>` attache une fois pour toutes le
+  hook `pre-commit` commun (le hook auto-détecte le point d'entrée dans le
+  dépôt où on committe).
 - `examples/ledger/main.beancount` (options + includes globs) : **jamais édité par les outils**, sauf
   l'ajout d'un include budget. Une directive par ligne dans `examples/ledger/budgets/AAAA.beancount`.
 - Toute écriture passe par les writers de `household-core` / `household-budget` :

@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 # Hook pre-commit : refuse tout commit qui invalide le ledger.
 # Valide seulement quand des fichiers .beancount sont dans la zone d'index.
+#
+# Fonctionne dans n'importe quel dépôt beancount (ADR-004) : le point
+# d'entrée est trouvé dans le dépôt courant —
+#   - dépôt logiciel : examples/ledger/main.beancount (recette, CI) ;
+#   - dépôt du ledger réel : main.beancount à la racine.
 set -euo pipefail
 
 cd "$(git rev-parse --show-toplevel)"
@@ -9,13 +14,25 @@ if ! git diff --cached --name-only --diff-filter=ACMR | grep -q '\.beancount$'; 
   exit 0
 fi
 
-echo "pre-commit: validation du ledger…"
+# Point d'entrée du ledger : recette du dépôt logiciel, sinon main.beancount
+# à la racine (dépôt du ledger réel, cf. docs/ADR-004).
+if [ -f examples/ledger/main.beancount ]; then
+  cible=examples/ledger/main.beancount
+elif [ -f main.beancount ]; then
+  cible=main.beancount
+else
+  echo "ERREUR: point d'entrée du ledger introuvable — ni" >&2
+  echo "        examples/ledger/main.beancount, ni main.beancount à la racine." >&2
+  exit 1
+fi
+
+echo "pre-commit: validation du ledger ($cible)…"
 
 if command -v rledger >/dev/null 2>&1; then
-  rledger check examples/ledger/main.beancount
+  rledger check "$cible"
 elif [ -f Cargo.toml ]; then
   # Repli : la CLI maison (crate household-core, depuis le jalon 2).
-  cargo run -q -p household-core --bin household-cli -- check examples/ledger/main.beancount
+  cargo run -q -p household-core --bin household-cli -- check "$cible"
 else
   echo "ERREUR: ni 'rledger' ni le workspace Cargo pour valider le ledger." >&2
   echo "Installez rustledger : brew install rustledger" >&2
