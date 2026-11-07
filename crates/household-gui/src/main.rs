@@ -5,8 +5,10 @@
 //! fichier de préférences `~/.config/rust-personal-accounting.toml`, puis le
 //! ledger d'exemple du dépôt avec badge « données fictives »).
 //! Pour du test : `COMPTA_ECRAN=journal|saisie|budget|rapports|graphiques|git`
-//! ouvre la fenêtre correspondante au démarrage (sans le tableau de bord) —
-//! défaut : tableau de bord quasi plein écran.
+//! ouvre la fenêtre correspondante au démarrage (sans le tableau de bord),
+//! `COMPTA_ECRAN=aucun` n'ouvre aucune fenêtre d'écran — défaut : tableau de
+//! bord quasi plein écran. `COMPTA_FENETRE_LEDGER=1` ouvre la fenêtre
+//! « Ledger actif » au démarrage (captures).
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 

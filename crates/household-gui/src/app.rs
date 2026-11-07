@@ -135,16 +135,24 @@ impl FoyerApp {
         let (cmd_tx, outcome_rx) = crate::worker::demarrer(cc.egui_ctx.clone(), main.clone());
         let watcher = crate::worker::demarrer_watcher(&main, cmd_tx.clone());
         let mut fenetres_ouvertes = [false; Onglet::TOUS.len()];
-        match Onglet::depuis_env(std::env::var("COMPTA_ECRAN").ok().as_deref()) {
-            // Affordance de test : SEULE l'écran demandé est ouvert.
-            Some(onglet) => {
-                fenetres_ouvertes[onglet.index()] = true;
-            }
-            // Usage normal : le tableau de bord démarre quasi plein écran.
-            None => {
-                fenetres_ouvertes[Onglet::TableauDeBord.index()] = true;
+        let ecran_env = std::env::var("COMPTA_ECRAN").ok();
+        let ecran_demande = ecran_env.as_deref().map(str::trim);
+        if ecran_demande != Some("aucun") {
+            // `aucun` = aucune fenêtre d'écran ouverte (captures/tests) ;
+            // sinon l'écran demandé, ou le tableau de bord par défaut.
+            match Onglet::depuis_env(ecran_demande) {
+                Some(onglet) => {
+                    fenetres_ouvertes[onglet.index()] = true;
+                }
+                None => {
+                    fenetres_ouvertes[Onglet::TableauDeBord.index()] = true;
+                }
             }
         }
+        // Affordance de test : la fenêtre « Ledger actif » est ouverte au
+        // démarrage (vérifications visuelles de la résolution, captures).
+        let params_au_demarrage =
+            std::env::var("COMPTA_FENETRE_LEDGER").is_ok_and(|v| !v.is_empty() && v != "0");
         let app = Self {
             main,
             resolu,
@@ -162,7 +170,7 @@ impl FoyerApp {
             budget: crate::views::budget::UiState::nouveau(crate::worker::aujourd_hui().year()),
             git: crate::views::git::UiState::nouveau(),
             graphiques: crate::views::graphiques::UiState::nouveau(),
-            params_ledger: false,
+            params_ledger: params_au_demarrage,
             git_donnees: None,
             config: crate::config::Config::charger(),
         };
@@ -463,14 +471,33 @@ impl eframe::App for FoyerApp {
             ui.separator();
 
             if self.donnees.is_none() {
-                // Ledger pas encore chargé (ou échec de chargement).
+                // Ledger pas encore chargé (ou échec de chargement). Un
+                // échec n'est pas un chargement en cours : ne pas laisser
+                // le spinner tourner à l'infini alors que la bannière au-
+                // dessus explique déjà pourquoi rien ne peut s'afficher.
                 ui.centered_and_justified(|ui| {
                     ui.vertical_centered(|ui| {
                         ui.add_space(40.0);
-                        ui.add(egui::widgets::Spinner::new().size(42.0));
-                        ui.add_space(12.0);
-                        ui.label("Chargement du ledger…");
-                        if self.echec.is_none() {
+                        if self.echec.is_none() || self.en_chargement {
+                            ui.add(egui::widgets::Spinner::new().size(42.0));
+                            ui.add_space(12.0);
+                            ui.label("Chargement du ledger…");
+                            if self.echec.is_none() {
+                                ui.label(
+                                    RichText::new(self.main.display().to_string())
+                                        .weak()
+                                        .small(),
+                                );
+                            }
+                        } else {
+                            ui.add_space(24.0);
+                            ui.label(
+                                RichText::new(
+                                    "⚠ Chargement impossible — voir la bannière ci-dessus.",
+                                )
+                                .strong()
+                                .color(egui::Color32::from_rgb(0xd8, 0x3b, 0x2f)),
+                            );
                             ui.label(
                                 RichText::new(self.main.display().to_string())
                                     .weak()

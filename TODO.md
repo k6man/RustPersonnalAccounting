@@ -32,6 +32,11 @@ renommée avec migration, badge GUI. Suite de l'audit RGPD du dépôt.
 
 ## En cours
 
+_Séparation exemple / vrai ledger (jalon 8, 2026-11-07) : le socle, le
+sélecteur GUI (8.1) et les vérifications visuelles (8.2) sont committés ;
+reste la tâche 3 — ADR « vrai ledger = dépôt git séparé » — voir backlog
+« restes » ci-dessous (avec un cas limite badge à trancher)._
+
 _Fenêtre « Graphiques » — 7ᵉ écran flottant (2026-11-01/02) — code, tests,
 vérification visuelle des trois états (captures ✓) : `just check` vert
 (80 tests) ; livré dans le commit suivant._
@@ -292,11 +297,35 @@ largeur, barres carte budget 180→240 ; fenêtre 1200×760 → 1300×800 (min 9
   (efface le champ), effet au prochain lancement ; réglages désactivés si la
   source est argument/`RPA_LEDGER` (`SourceResolution::surcharge_config`).
   Dép. `rfd 0.17` (MIT/Apache-2.0).
-- [ ] Vérifications visuelles des quatre échelons de résolution (argument >
-  `RPA_LEDGER` > champ config > exemple) : badge, bannière d'échec du
-  chargement, flash d'avertissement.
+- [x] Vérifications visuelles des quatre échelons de résolution (2026-11-07,
+  captures dans `/…/T/opencode/rpa-captures/shots/`) — les cinq scénarios
+  attendus sont conformes :
+  A. repli exemple → badge « LEDGER D'EXEMPLE — données fictives » + chemin
+     `examples/ledger/main.beancount` dans l'en-tête ;
+  B. argument CLI → pas de badge, chemin complet affiché ;
+  C. `RPA_LEDGER` introuvable → bannière rouge d'échec de chargement,
+     fenêtre « Ledger actif » avec avertissement « champ inert » + avertissement
+     rouge, sélecteur/réglages grisés, pas de crash du watcher (cf. fix) ;
+  D. champ config → source `champ chemin_ledger de la config locale`,
+     boutons actifs, pas de note de surcharge (correct) ;
+  E. `RPA_LEDGER` valide → source `variable RPA_LEDGER` + note orange
+     « chemin imposé », réglages grisés.
+  Affordances de capture : `COMPTA_FENETRE_LEDGER=1` (fenêtre « Ledger actif »
+  au démarrage) et `COMPTA_ECRAN=aucun` (aucune fenêtre d'écran, en-tête dégagé).
+  Deux miettes corrigées au passage :
+  - `worker.rs::demarrer_watcher` ne panique plus si le répertoire du ledger
+    n'existe pas (chemin fantôme/disque démonté) : dégradation élégante
+    « surveillance désactivée », la GUI démarre avec sa bannière + « Recharger »
+    (l'app doit TOUJOURS démarrer ; un échec de chargement n'est pas un crash) ;
+  - écran d'accueil : un échec affichait un spinner à l'infini ; désormais
+    « ⚠ Chargement impossible — voir la bannière ci-dessus » (spinner réservé
+    au chargement réel, y compris rechargement après échec).
 - [ ] ADR (ou complément ADR-002) : le vrai ledger du foyer est un dépôt git
   séparé — y relancer `just setup` une première fois pour ses hooks.
+- [ ] Cas limite (vu en vérif.) : pointer explicitement (argument ou
+  `RPA_LEDGER`) sur `examples/ledger/main.beancount` donne le mode Réel
+  SANS badge — la détection d'exemple devrait se faire sur le chemin
+  résolu (égal à `EXEMPLE_RELATIF`), pas seulement sur l'échelon de repli.
 
 ### Revue de code — suite (2026-11-01, post-v0.1.0)
 

@@ -508,8 +508,12 @@ fn donnees_fraiches(snapshot: &household_core::Snapshot) -> Result<Arc<UiData>, 
 /// vivant : le détruire arrête la surveillance.
 ///
 /// # Panics
-/// Panique si le répertoire du ledger n'existe pas ou est inobservable :
-/// sans watcher, la GUI doit s'arrêter tôt plutôt que se croire à jour.
+/// Panique si le répertoire du ledger *existe* mais est inobservable
+/// (sandbox, répertoire protégé) : sans surveillance possible, mieux vaut
+/// s'arrêter tôt. En revanche, si le répertoire n'existe pas encore (ledger
+/// configuré mais absent au démarrage — ex. chemin fantôme, disque démonté),
+/// cette fonction dégrade élégamment : pas de surveillance, la GUI démarre
+/// quand même avec sa bannière d'échec de chargement et « Recharger ».
 pub fn demarrer_watcher(main: &Path, cmd_tx: Sender<Command>) -> notify::RecommendedWatcher {
     use notify::Watcher as _;
 
@@ -525,9 +529,20 @@ pub fn demarrer_watcher(main: &Path, cmd_tx: Sender<Command>) -> notify::Recomme
             }
         })
         .expect("watcher du ledger");
-    watcher
-        .watch(&dossier, notify::RecursiveMode::Recursive)
-        .expect("surveillance du répertoire ledger");
+    if dossier.exists() {
+        watcher
+            .watch(&dossier, notify::RecursiveMode::Recursive)
+            .expect("surveillance du répertoire ledger");
+    } else {
+        // Rétablissement possible : le watcher n'est pas lancé ; si le
+        // dossier apparaît ensuite, le watcher ne le verra pas — le bouton
+        // « Recharger » fait le job (l'échec au premier chargement est
+        // déjà en bannière).
+        eprintln!(
+            "⚠ surveillance désactivée (répertoire absent) : {}",
+            dossier.display()
+        );
+    }
     watcher
 }
 
