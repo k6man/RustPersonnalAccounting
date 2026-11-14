@@ -71,6 +71,12 @@ pub struct CommitInfo {
     pub auteur: String,
 }
 
+/// OID court (7 caractères max, sans panique si plus court).
+fn oid_court(oid: &git2::Oid) -> String {
+    let s = oid.to_string();
+    s[..s.len().min(7)].to_string()
+}
+
 /// Résumé du diff index+arborescence vs HEAD.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ResumeDiff {
@@ -142,8 +148,11 @@ pub fn tout_indexer(repo: &Repository) -> Result<(), GitErreur> {
 /// Crée un commit de l'index courant sur la branche HEAD.
 ///
 /// # Erreurs
-/// Propage les erreurs libgit2 (index vide compris — l'app vérifie le statut
-/// avant d'appeler).
+/// Propage les erreurs libgit2 (index vide compris).
+///
+/// ⚠ TOCTOU : l'application vérifie le statut avant d'appeler `commit`, mais
+/// entre les deux le depot peut etre modifie par un autre processus. Cette
+/// race condition est gardee cote app (verrouillage ou re-verification).
 pub fn commit(repo: &Repository, message: &str) -> Result<String, GitErreur> {
     let mut index = repo.index()?;
     index.write()?;
@@ -168,7 +177,7 @@ pub fn commit(repo: &Repository, message: &str) -> Result<String, GitErreur> {
         &arbre,
         &parents_refs,
     )?;
-    Ok(oid.to_string()[..7].to_string())
+    Ok(oid_court(&oid))
 }
 
 /// Identité du committer : config git du dépôt/global, repli local si absente.
@@ -215,7 +224,7 @@ pub fn historique(
             .map(|z| z.strftime("%Y-%m-%d %H:%M").to_string())
             .unwrap_or_default();
         out.push(CommitInfo {
-            oid: oid.to_string()[..7].to_string(),
+            oid: oid_court(&oid),
             sujet: commit.summary().ok().flatten().unwrap_or("").to_string(),
             date,
             auteur: commit.author().name().unwrap_or("").to_string(),
@@ -227,8 +236,9 @@ pub fn historique(
     Ok(out)
 }
 
-/// Le commit touche-t-il ce chemin ? Comparaison de l'entrée d'arbre avec
-/// celle du premier parent (création/modification/suppression = touché).
+/// Le commit touche-t-il ce chemin ? Compare l'entrée d'arbre avec celle de
+/// **tous** les parents (commits de fusion inclus) : le fichier est touche
+/// si son OID differe du courant dans au moins un parent.
 fn touche_chemin(commit: &git2::Commit, chemin: &str) -> Result<bool, GitErreur> {
     let oid_noeud = |arbre: &git2::Tree| -> Option<git2::Oid> {
         arbre
@@ -237,12 +247,21 @@ fn touche_chemin(commit: &git2::Commit, chemin: &str) -> Result<bool, GitErreur>
             .map(|entree| entree.id())
     };
     let courant = oid_noeud(&commit.tree()?);
-    let parent = commit
-        .parent(0)
-        .ok()
-        .and_then(|p| p.tree().ok())
-        .and_then(|t| oid_noeud(&t));
-    Ok(courant != parent)
+
+    // Commit racine (sans parent) : tout fichier present est cree.
+    if commit.parent_count() == 0 {
+        return Ok(courant.is_some());
+    }
+
+    // Commits de fusion : plusieurs parents. Touche si le fichier differe
+    // du courant dans au moins un parent.
+    for parent in commit.parents() {
+        let parent_oid = parent.tree().ok().and_then(|t| oid_noeud(&t));
+        if courant != parent_oid {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 /// Résumé du diff HEAD → index+arborescence (fichiers, insertions,
