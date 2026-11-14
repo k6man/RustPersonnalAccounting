@@ -1,12 +1,14 @@
-//! Écran Journal (stub TUI — à implémenter).
+//! Écran Journal (TUI).
 
 use ratatui::{
     Frame,
-    style::{Color, Style},
-    widgets::{Block, Borders, Paragraph},
+    layout::{Constraint, Direction, Layout},
+    style::{Color, Modifier, Style},
+    widgets::{Block, Borders, List, ListItem, Paragraph, Row, Table, TableState, Wrap},
 };
 
-use crate::viewmodel::JournalData;
+use crate::fmt::eur;
+use crate::viewmodel::{JournalData, LigneJournal};
 
 /// Action utilisateur retournée par l'écran journal.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -23,24 +25,119 @@ pub enum ActionJournal {
 #[derive(Debug, Clone, Default)]
 pub struct UiState {
     pub selection: Option<usize>,
+    /// État du widget Table (pour le rendu stateful).
+    table_state: TableState,
 }
 
 impl UiState {
     pub fn new() -> Self {
-        Self::default()
+        Self {
+            selection: None,
+            table_state: TableState::new(),
+        }
+    }
+
+    /// Index de la ligne sélectionnée (clampé au nombre de lignes).
+    pub fn selection_index(&self, nb_lignes: usize) -> usize {
+        self.selection.unwrap_or(0).min(nb_lignes.saturating_sub(1))
+    }
+
+    /// Définit la sélection.
+    pub fn set_selection(&mut self, index: usize) {
+        self.selection = Some(index);
+        self.table_state.select(Some(index));
     }
 }
 
 /// Dessine le journal.
-pub fn afficher(
-    _f: &mut Frame,
-    _donnees: &JournalData,
-    _etat: &mut UiState,
-) -> Option<ActionJournal> {
-    let block = Block::default().title("Journal").borders(Borders::ALL);
-    let texte = Paragraph::new("Journal — à implémenter en ratatui")
-        .block(block)
-        .style(Style::default().fg(Color::White));
-    _f.render_widget(texte, _f.size());
+pub fn afficher(f: &mut Frame, donnees: &JournalData, etat: &mut UiState) -> Option<ActionJournal> {
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(3), // info
+            Constraint::Min(0),    // tableau
+        ])
+        .split(f.size());
+
+    // Info : nombre de lignes.
+    let info = Paragraph::new(format!(
+        " {} transaction(s) — flèches haut/bas pour naviguer, Entrée pour modifier, Suppr pour supprimer",
+        donnees.lignes.len()
+    ))
+    .block(Block::default().borders(Borders::ALL));
+    f.render_widget(info, chunks[0]);
+
+    // Tableau des transactions.
+    let rows: Vec<Row> = donnees
+        .lignes
+        .iter()
+        .take(50) // pagination simple : 50 lignes max
+        .enumerate()
+        .map(|(i, ligne)| {
+            let compte_str: String = ligne
+                .lignes_posting
+                .iter()
+                .map(|p| p.compte.clone())
+                .collect::<Vec<_>>()
+                .join(", ");
+            let tags_str: String = ligne.tags.iter().cloned().collect::<Vec<_>>().join(" ");
+            let flag = if ligne.flag == '*' { "" } else { "!" };
+            let montant = ligne
+                .montant
+                .map(|m| eur(m).to_string())
+                .unwrap_or_else(|| "–".to_string());
+            Row::new(vec![
+                ligne.date.to_string(),
+                flag.to_string(),
+                ligne.tiers.clone().unwrap_or_default(),
+                ligne.libelle.clone(),
+                compte_str,
+                montant,
+                tags_str,
+            ])
+        })
+        .collect();
+
+    if rows.is_empty() {
+        let vide = Paragraph::new("Aucune transaction.")
+            .block(Block::default().borders(Borders::ALL).title(" Journal "));
+        f.render_widget(vide, chunks[1]);
+        return None;
+    }
+
+    let nb_lignes = rows.len();
+    let selected = etat.selection_index(nb_lignes);
+    etat.table_state.select(Some(selected));
+
+    let tableau = Table::new(
+        rows,
+        [
+            Constraint::Length(10), // date
+            Constraint::Length(4),  // flag
+            Constraint::Length(15), // tiers
+            Constraint::Length(30), // libellé
+            Constraint::Length(25), // comptes
+            Constraint::Length(12), // montant
+            Constraint::Length(15), // tags
+        ],
+    )
+    .header(
+        Row::new(vec![
+            "Date", "F", "Tiers", "Libellé", "Comptes", "Montant", "Tags",
+        ])
+        .style(Style::default().add_modifier(Modifier::BOLD))
+        .bottom_margin(1),
+    )
+    .block(Block::default().borders(Borders::ALL).title(format!(
+        " Journal — ligne {} / {}",
+        selected + 1,
+        nb_lignes
+    )))
+    .highlight_symbol(">> ")
+    .highlight_style(Style::default().add_modifier(Modifier::REVERSED))
+    .column_spacing(1);
+
+    f.render_stateful_widget(tableau, chunks[1], &mut etat.table_state);
+
     None
 }
