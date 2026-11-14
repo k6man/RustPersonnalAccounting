@@ -273,10 +273,7 @@ fn ensure_include(old: &str, year: i16, include_line: &str) -> String {
     let position = lines
         .iter()
         .enumerate()
-        .find(|(_, line)| {
-            is_budget_include(line)
-                && budget_year(line).is_some_and(|y| y > year)
-        })
+        .find(|(_, line)| is_budget_include(line) && budget_year(line).is_some_and(|y| y > year))
         .map(|(index, _)| index) // insérer juste avant le premier budget > year
         .or_else(|| {
             // Aucune année supérieure : insérer après le dernier include de budget
