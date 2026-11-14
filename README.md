@@ -18,6 +18,7 @@ moteur **rustledger** (implémentation Rust), suivi **git** natif, et une GUI **
 | 5 | Saisie/écriture de transactions | ✅ |
 | 6 | Éditeur de budget postes × 12 mois | ✅ |
 | 7 | Rapports, git dans la GUI, polish | ✅ |
+| 8 | Séparation exemple / vrai ledger (résolution, badge, ADR-004) | ✅ |
 
 ## Installation
 

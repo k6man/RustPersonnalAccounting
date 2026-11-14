@@ -70,8 +70,8 @@ cargo run -q -p household-core --bin household-cli -- check examples/ledger/main
   (`views/`) sont de la présentation pure — calculs dans `viewmodel.rs` (UiData en `Arc`)
   ou dans les modules purs des autres crates. Pas de logique métier dans les vues.
   Watcher `notify` → Reload (débounce 250 ms).
-- **Écrans = fenêtres flottantes** : `fenetres_ouvertes: [bool; 6]` dans `app.rs`
-  (méthode `FoyerApp::vue`), barre du haut en `toggle_value`, Ctrl+1..6 ; le tableau
+- **Écrans = fenêtres flottantes** : `fenetres_ouvertes: [bool; 7]` dans `app.rs`
+  (méthode `FoyerApp::vue`), barre du haut en `toggle_value`, Ctrl+1..7 ; le tableau
   de bord démarre quasi plein écran (`default_size`, pas de `maximized` en egui 0.37) ;
   position/taille persistées par eframe ; `UiState` des vues conservés entre
   ouvertures. `COMPTA_ECRAN=<tab>` ouvre seulement la fenêtre demandée (affordance

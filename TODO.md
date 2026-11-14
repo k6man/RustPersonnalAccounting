@@ -11,7 +11,7 @@
 > - Mise à jour **à chaque jalon et à chaque tâche significative**, dans le **même commit** que le code concerné.
 > - Les tâches découvertes en cours de route sont ajoutées immédiatement, pas perdues.
 
-**État du projet** : **jalons 1→7 terminés — projet complet (v0.1.0)**. Ledger d'exemple
+**État du projet** : **jalons 1→8 terminés — projet complet (v0.1.0)**. Ledger d'exemple
 validé (`rledger check` ✓), fmt/clippy `-D warnings`/tests verts.
 Passe UI « largeurs » appliquée (2026-10-30), **puis passe de vérification visuelle**
 (captures d'écran de chaque onglet, 2026-10-31) avec corrections.
@@ -32,14 +32,10 @@ renommée avec migration, badge GUI. Suite de l'audit RGPD du dépôt.
 
 ## En cours
 
-_Séparation exemple / vrai ledger (jalon 8, 2026-11-07) : le socle, le
-sélecteur GUI (8.1) et les vérifications visuelles (8.2) sont committés ;
-reste la tâche 3 — ADR « vrai ledger = dépôt git séparé » — voir backlog
-« restes » ci-dessous (avec un cas limite badge à trancher)._
-
-_Fenêtre « Graphiques » — 7ᵉ écran flottant (2026-11-01/02) — code, tests,
-vérification visuelle des trois états (captures ✓) : `just check` vert
-(80 tests) ; livré dans le commit suivant._
+_Aucune tâche en cours._ Tous les jalons 1→8 sont terminés (v0.1.0 livré,
+tag `v0.1.0`). Le backlog « Revue de code » est intégralement traité
+(#1→#10 + flakiness temp dirs + 6 nits). Prochaine action : usage réel
+(saisie quotidienne, budgets 2027 via l'éditeur).
 
 **Décisions tranchées avec la maîtresse d'ouvrage** : une seule fenêtre « Graphiques »
 avec des mini-onglets internes (pas une fenêtre par graphe) ; trois graphes
@@ -159,12 +155,12 @@ chemin tel que chargé ; une égalité naive fait passer « même fichier » pou
 
 _Passe UI « onglets → fenêtres flottantes » (2026-11-01) — terminée (commit ci-dessous)._
 
-**Décisions** (tranchées avec la maîtresse d'ouvrage) : les six écrans deviennent des
+**Décisions** (tranchées avec la maîtresse d'ouvrage) : les sept écrans deviennent des
 `egui::Window` flottants ; le tableau de bord démarre quasi plein écran comme les
-autres ; position/taille persistées par egui/eframe (zéro code) ; raccourcis Ctrl+1..6.
+autres ; position/taille persistées par egui/eframe (zéro code) ; raccourcis Ctrl+1..7.
 
 **Implémentation** (essentiellement `app.rs`) :
-- `onglet: Onglet` (sélection unique) → `fenetres_ouvertes: [bool; 6]` aligné sur
+- `onglet: Onglet` (sélection unique) → `fenetres_ouvertes: [bool; 7]` aligné sur
   `Onglet::TOUS` ; `ouvrir`/`basculer` ; `vue(&mut self, ui, Onglet, &Arc<UiData>)`
   = extraction de l'ancien match (les vues restent inchangées).
 - Barre du haut : `ui.toggle_value(&mut sel, libellé)` (signature 0.37 = `&mut bool`,
@@ -386,27 +382,14 @@ Ordre de priorité proposé :
   jiff (`Date::new`, `last_of_month`, `checked_add`) retournant
   `Option<NaiveDate>` ; `mois_suivant_1er` ajouté comme remplacement sûr de
   `month_start_exclusive`. Tous les appelants et tests mis à jour.
-- Nits à grappiller (sans urgence) :
-  - Correction du flakiness des répertoires temporaires de test : tous les
-    `temp_dir`/`temporaire`/`chemin_temporaire` utilisent désormais un
-    `AtomicU64` en plus de `SystemTime::now()` + PID, de sorte que deux tests
-    parallèles dans le même processus (même PID, mêmes nanos) ne créent plus
-    le même répertoire/fichier temporaire. Concerne `household-core` (writer +
-    résolution), `household-gui` (config, y compris le fichier temporaire de
-    `sauver_vers` en production) et les `tests/common/mod.rs` (déjà équipés).
-  - `viewmodel::rapports` classe par `starts_with("Expenses")` sans `:` —
-    utiliser `AccountTypeKind` comme le fait déjà `patrimoine_net` ;
-    `"Assets:Epargne"`/`"EUR"` hardcodés vs options du ledger.
-  - `household-core/writer.rs` : `fn ioutil_header` (goïsme → `entete_mensuel`)
-    ; paramètre `_file_id` vestige de `rewrite_span`.
-  - `household-budget/writer.rs` : `ensure_include` insère après le dernier
-    include de budget sans trier par année.
-  - `household-gui/saisie.rs` : la contrepartie d'équilibrage avec résidu déjà
-    nul écrit un posting `0.00 EUR` (bruit dans le fichier).
-  - `household-git` : troncature d'OID `[..7]` littérale ; `touche_chemin` ne
-    compare que le parent 0 (commits de fusion) ; TOCTOU statut→commit.
-  - `household-gui/worker.rs` : `cmd_tx.send(...).ok()` ignore la fermeture du
-    canal (déférence — le worker ne panic plus, à reconsidérer quand même).
+- Nits à grappiller (tous traités, voir commits associés) :
+  - Flakiness des répertoires temporaires de test (`738e159`)
+  - Préfixe épargne basé sur les options du ledger (`8621242`)
+  - `ioutil_header` → `entete_mensuel`, `_file_id` retiré (`48d476e`)
+  - `ensure_include` trie par année (`62fa08d`)
+  - Plus de posting `0.00 EUR` quand résidu nul (`8d5a014`)
+  - household-git : OID sûr, tous les parents, doc TOCTOU (`72fd22c`)
+  - Worker : `send_sans_panique` au lieu de `.send().ok()` (`86de90a`)
 
 ### Jalon 1 — Squelette workspace + ledger d'exemple
 
