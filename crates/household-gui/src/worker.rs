@@ -117,7 +117,10 @@ const DEBOUNCE: Duration = Duration::from_millis(250);
 
 /// Démarre le worker. Il charge immédiatement puis boucle sur les commandes.
 /// Le récepteur des résultats est retourné pour l'UI.
-pub fn demarrer(ctx: egui::Context, main: PathBuf) -> (Sender<Command>, Receiver<LoadOutcome>) {
+///
+/// La boucle UI (ratatui) redessine à chaque itération : le worker n'a pas
+/// besoin de demander un repaint explicite.
+pub fn demarrer(main: PathBuf) -> (Sender<Command>, Receiver<LoadOutcome>) {
     let (cmd_tx, cmd_rx) = std::sync::mpsc::channel::<Command>();
     let (out_tx, out_rx) = std::sync::mpsc::channel::<LoadOutcome>();
     // Le worker peut remettre des commandes en file (drain du debounce) —
@@ -127,7 +130,6 @@ pub fn demarrer(ctx: egui::Context, main: PathBuf) -> (Sender<Command>, Receiver
     thread::spawn(move || {
         // Premier chargement : la GUI a quelque chose à montrer tout de suite.
         send_sans_panique(&out_tx, charger(&main), "chargement initial");
-        ctx.request_repaint();
 
         while let Ok(commande) = cmd_rx.recv() {
             match commande {
@@ -159,11 +161,9 @@ pub fn demarrer(ctx: egui::Context, main: PathBuf) -> (Sender<Command>, Receiver
                     }
 
                     send_sans_panique(&out_tx, charger(&main), "chargement apres debounce");
-                    ctx.request_repaint();
                 }
                 Command::Ecrire(brouillon) => {
                     send_sans_panique(&out_tx, ecrire(&main, &brouillon), "ecriture transaction");
-                    ctx.request_repaint();
                 }
                 Command::Modifier {
                     index,
@@ -175,7 +175,6 @@ pub fn demarrer(ctx: egui::Context, main: PathBuf) -> (Sender<Command>, Receiver
                         modifier(&main, index, &empreinte, &brouillon),
                         "modification transaction",
                     );
-                    ctx.request_repaint();
                 }
                 Command::Supprimer { index, empreinte } => {
                     send_sans_panique(
@@ -183,7 +182,6 @@ pub fn demarrer(ctx: egui::Context, main: PathBuf) -> (Sender<Command>, Receiver
                         supprimer(&main, index, &empreinte),
                         "suppression transaction",
                     );
-                    ctx.request_repaint();
                 }
                 Command::CelluleBudget {
                     annee,
@@ -196,7 +194,6 @@ pub fn demarrer(ctx: egui::Context, main: PathBuf) -> (Sender<Command>, Receiver
                         cellule_budget(&main, annee, date, &compte, montant),
                         "cellule budget",
                     );
-                    ctx.request_repaint();
                 }
                 Command::GenererAnnee {
                     source,
@@ -209,15 +206,12 @@ pub fn demarrer(ctx: egui::Context, main: PathBuf) -> (Sender<Command>, Receiver
                         generer_annee(&main, source, cible, pourcent, pas),
                         "generation annee",
                     );
-                    ctx.request_repaint();
                 }
                 Command::GitStatut => {
                     send_sans_panique(&out_tx, git_resultat(&main, None), "statut git");
-                    ctx.request_repaint();
                 }
                 Command::GitCommit { message } => {
                     send_sans_panique(&out_tx, git_resultat(&main, Some(&message)), "commit git");
-                    ctx.request_repaint();
                 }
             }
         }

@@ -49,7 +49,7 @@ pub struct Brouillon {
 /// l'empreinte (date, tiers, libellé, montant principal) permet de la
 /// relocaliser sûrement — le montant discrimine les transactions "jumelles"
 /// (même date + tiers + libellé) qui auraient autrement la même empreinte.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Empreinte {
     pub date: NaiveDate,
     pub tiers: Option<String>,

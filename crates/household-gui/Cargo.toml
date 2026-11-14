@@ -11,10 +11,8 @@ name = "compta-foyer"
 path = "src/main.rs"
 
 [dependencies]
-eframe.workspace = true
-egui.workspace = true
-egui_extras.workspace = true
-egui_plot.workspace = true
+ratatui.workspace = true
+crossterm.workspace = true
 notify.workspace = true
 rustledger-core.workspace = true
 rustledger-budget.workspace = true
