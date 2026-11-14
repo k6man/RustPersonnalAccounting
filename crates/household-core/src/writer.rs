@@ -18,6 +18,8 @@
 //! - Verrou `.write.lock` (rename/mtime, anti-stale) : deux processus ne
 //!   peuvent pas écrire en même temps (GUI + éditeur externe + hook).
 
+use std::collections::HashSet;
+use std::fmt;
 use std::fs::{self, File};
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
@@ -26,7 +28,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use rustledger_core::format::{FormatConfig, format_directives};
 use rustledger_core::{Directive, NaiveDate, Transaction};
-use rustledger_loader::LedgerError;
+use rustledger_loader::{ErrorSeverity, LedgerError};
 
 use crate::error::CoreError;
 use crate::snapshot::Snapshot;
@@ -451,9 +453,48 @@ fn canonize(path: &Path) -> PathBuf {
     }
 }
 
+/// Clé de comparaison d'un diagnostic de validation (code + emplacement +
+/// message). Serv à ne bloquer une écriture que si elle introduit une erreur
+/// fatale *nouvelle* par rapport à l'état initial du ledger : un diagnostic
+/// préexistant (warning ou erreur fatale déjà présente) ne doit pas verrouiller
+/// le ledger définitivement.
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+struct CleDiagnostic {
+    code: String,
+    fichier: Option<String>,
+    ligne: Option<usize>,
+    message: String,
+}
+
+impl From<&LedgerError> for CleDiagnostic {
+    fn from(e: &LedgerError) -> Self {
+        Self {
+            code: e.code.clone(),
+            fichier: e.location.as_ref().map(|l| l.file.display().to_string()),
+            ligne: e.location.as_ref().map(|l| l.line),
+            message: e.message.clone(),
+        }
+    }
+}
+
+impl fmt::Display for CleDiagnostic {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.code)?;
+        if let Some(ligne) = self.ligne {
+            write!(f, " @ ligne {ligne}")?;
+        }
+        write!(f, ": {}", self.message)
+    }
+}
+
 /// Pré-vérification : copie du répertoire ledger dans un scratch, application
 /// de **tous** les changements sur la copie, chargement complet → `Ok(())`
-/// seulement si zéro erreur.
+/// seulement si l'écriture n'introduit aucune erreur fatale *nouvelle*.
+///
+/// Un diagnostic préexistant (warning ou erreur fatale déjà présent dans le
+/// ledger réel) ne bloque pas la mutation : seules les erreurs fatales qui
+/// apparaissent à la suite de l'écriture sont rédhibitoires. Cela évite qu'un
+/// warning sans rapport avec l'écriture ne verrouille définitivement le ledger.
 fn precheck_with(main: &Path, updated: &[(PathBuf, String)]) -> Result<(), CoreError> {
     // Canonisation (macOS : /var est un symlink vers /private/var, le loader
     // peut stocker les chemins canoniques) — sans canonisation, strip_prefix
@@ -466,6 +507,16 @@ fn precheck_with(main: &Path, updated: &[(PathBuf, String)]) -> Result<(), CoreE
     let scratch = temp_dir("household-precheck");
     fs::create_dir_all(&scratch)?;
     let outcome = (|| -> Result<(), CoreError> {
+        // Baseline du ledger avant mutation : seules les erreurs fatales
+        // préexistantes sont tolérées par la suite.
+        let baseline = Snapshot::load(&main)?;
+        let baseline_fatal: HashSet<CleDiagnostic> = baseline
+            .errors()
+            .iter()
+            .filter(|e| e.severity == ErrorSeverity::Error)
+            .map(CleDiagnostic::from)
+            .collect();
+
         copy_tree(&root, &scratch.join("ledger"))?;
         for (target, content) in updated {
             let target = canonize(target);
@@ -487,10 +538,22 @@ fn precheck_with(main: &Path, updated: &[(PathBuf, String)]) -> Result<(), CoreE
                 .ok_or_else(|| CoreError::Writer("main sans nom".to_string()))?,
         );
         let copy = Snapshot::load(&copy_main)?;
-        if !copy.is_valid() {
+        let copy_fatal: HashSet<CleDiagnostic> = copy
+            .errors()
+            .iter()
+            .filter(|e| e.severity == ErrorSeverity::Error)
+            .map(CleDiagnostic::from)
+            .collect();
+        let nouveaux: Vec<CleDiagnostic> =
+            copy_fatal.difference(&baseline_fatal).cloned().collect();
+        if !nouveaux.is_empty() {
             return Err(CoreError::Writer(format!(
-                "l'écriture invaliderait le ledger: {}",
-                summarize_errors(&copy.ledger().errors)
+                "l'écriture invaliderait le ledger (nouvelle(s) erreur(s) fatale(s)) : {}",
+                nouveaux
+                    .iter()
+                    .map(|c| c.to_string())
+                    .collect::<Vec<_>>()
+                    .join(" | ")
             )));
         }
         Ok(())

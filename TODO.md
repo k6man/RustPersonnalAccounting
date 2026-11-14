@@ -346,11 +346,13 @@ Trouvailles de la revue complète non encore traitées (le détail est dans l'en
 « Revue de code Rust complète » de « En cours » ; #1/#2/#4 sont déjà corrigés).
 Ordre de priorité proposé :
 
-- [ ] **#5 — Pré-vérification trop stricte** (`household-core/writer.rs`) : la
-  précheck exige `is_valid()` = zéro diagnostic, warnings compris — un W
-  préexistant sans rapport avec l'écriture bloquerait toute mutation pour
-  toujours. Filtrer sur les erreurs fatales et comparer le diagnostic
-  avant/après (nuisance des diagnostics **nouveaux** seulement).
+- [x] **#5 — Pré-vérification trop stricte** (`household-core/writer.rs`) : la
+  précheck exigeait `is_valid()` = zéro diagnostic, warnings compris — un W
+  préexistant sans rapport avec l'écriture bloquait toute mutation pour
+  toujours. `precheck_with` filtre désormais sur les erreurs fatales
+  (`ErrorSeverity::Error`) et ne refuse que les diagnostics **nouveaux**
+  (comparaison avant/après sur la copie scratch). Un diagnostic préexistant
+  ne verrouille plus le ledger.
 - [ ] **#3 — Empreinte ambiguë** (`worker.rs::localiser`) : deux transactions
   jumelles le même jour (même date + tiers + libellé) satisfont la même
   empreinte et `position()` peut rewriter la mauvaise ligne. Ajouter un
