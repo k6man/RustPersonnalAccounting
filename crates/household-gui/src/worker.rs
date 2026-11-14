@@ -19,6 +19,14 @@ use rustledger_core::{Directive, IncompleteAmount, NaiveDate};
 use crate::saisie::{Brouillon, Empreinte};
 use crate::viewmodel::{self, UiData};
 
+/// Envoie une valeur sur un canal sans paniquer si le recepteur est ferme.
+/// Loggue un avertissement si le message est perdu (canal deconecte).
+fn send_sans_panique<T>(tx: &Sender<T>, valeur: T, contexte: &str) {
+    if let Err(e) = tx.send(valeur) {
+        eprintln!("⚠ canal du worker ferme ({contexte}), message perdu : {e}");
+    }
+}
+
 /// Commandes de l'UI / du watcher vers le worker.
 #[derive(Debug)]
 pub enum Command {
@@ -118,7 +126,7 @@ pub fn demarrer(ctx: egui::Context, main: PathBuf) -> (Sender<Command>, Receiver
 
     thread::spawn(move || {
         // Premier chargement : la GUI a quelque chose à montrer tout de suite.
-        out_tx.send(charger(&main)).ok();
+        send_sans_panique(&out_tx, charger(&main), "chargement initial");
         ctx.request_repaint();
 
         while let Ok(commande) = cmd_rx.recv() {
@@ -147,14 +155,14 @@ pub fn demarrer(ctx: egui::Context, main: PathBuf) -> (Sender<Command>, Receiver
                         // Remise en file : le rechargement ci-dessous part
                         // d'abord ; ces commandes seront ensuite traitées
                         // dans l'ordre, chacune avec son propre résultat.
-                        remise_en_file.send(cmd).ok();
+                        send_sans_panique(&remise_en_file, cmd, "remise en file commande debounce");
                     }
 
-                    out_tx.send(charger(&main)).ok();
+                    send_sans_panique(&out_tx, charger(&main), "chargement apres debounce");
                     ctx.request_repaint();
                 }
                 Command::Ecrire(brouillon) => {
-                    out_tx.send(ecrire(&main, &brouillon)).ok();
+                    send_sans_panique(&out_tx, ecrire(&main, &brouillon), "ecriture transaction");
                     ctx.request_repaint();
                 }
                 Command::Modifier {
@@ -162,13 +170,19 @@ pub fn demarrer(ctx: egui::Context, main: PathBuf) -> (Sender<Command>, Receiver
                     empreinte,
                     brouillon,
                 } => {
-                    out_tx
-                        .send(modifier(&main, index, &empreinte, &brouillon))
-                        .ok();
+                    send_sans_panique(
+                        &out_tx,
+                        modifier(&main, index, &empreinte, &brouillon),
+                        "modification transaction",
+                    );
                     ctx.request_repaint();
                 }
                 Command::Supprimer { index, empreinte } => {
-                    out_tx.send(supprimer(&main, index, &empreinte)).ok();
+                    send_sans_panique(
+                        &out_tx,
+                        supprimer(&main, index, &empreinte),
+                        "suppression transaction",
+                    );
                     ctx.request_repaint();
                 }
                 Command::CelluleBudget {
@@ -177,9 +191,11 @@ pub fn demarrer(ctx: egui::Context, main: PathBuf) -> (Sender<Command>, Receiver
                     compte,
                     montant,
                 } => {
-                    out_tx
-                        .send(cellule_budget(&main, annee, date, &compte, montant))
-                        .ok();
+                    send_sans_panique(
+                        &out_tx,
+                        cellule_budget(&main, annee, date, &compte, montant),
+                        "cellule budget",
+                    );
                     ctx.request_repaint();
                 }
                 Command::GenererAnnee {
@@ -188,17 +204,19 @@ pub fn demarrer(ctx: egui::Context, main: PathBuf) -> (Sender<Command>, Receiver
                     pourcent,
                     pas,
                 } => {
-                    out_tx
-                        .send(generer_annee(&main, source, cible, pourcent, pas))
-                        .ok();
+                    send_sans_panique(
+                        &out_tx,
+                        generer_annee(&main, source, cible, pourcent, pas),
+                        "generation annee",
+                    );
                     ctx.request_repaint();
                 }
                 Command::GitStatut => {
-                    out_tx.send(git_resultat(&main, None)).ok();
+                    send_sans_panique(&out_tx, git_resultat(&main, None), "statut git");
                     ctx.request_repaint();
                 }
                 Command::GitCommit { message } => {
-                    out_tx.send(git_resultat(&main, Some(&message))).ok();
+                    send_sans_panique(&out_tx, git_resultat(&main, Some(&message)), "commit git");
                     ctx.request_repaint();
                 }
             }
@@ -538,7 +556,7 @@ pub fn demarrer_watcher(main: &Path, cmd_tx: Sender<Command>) -> notify::Recomme
         notify::recommended_watcher(move |resultat: Result<notify::Event, notify::Error>| {
             if resultat.is_ok() {
                 // Toute modification du ledger → rechargement (déboncé côté worker).
-                cmd_tx.send(Command::Reload).ok();
+                send_sans_panique(&cmd_tx, Command::Reload, "reload watcher");
             }
         })
         .expect("watcher du ledger");
