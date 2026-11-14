@@ -140,3 +140,47 @@ pub fn afficher(f: &mut Frame, donnees: &JournalData, etat: &mut UiState) -> Opt
 
     None
 }
+
+/// Gère un événement clavier pour le journal.
+///
+/// Retourne une `ActionJournal` si l'utilisateur a demandé une action
+/// (modifier, supprimer), `None` sinon.
+pub fn on_key(
+    key: crossterm::event::KeyEvent,
+    etat: &mut UiState,
+    nb_lignes: usize,
+) -> Option<ActionJournal> {
+    match key.code {
+        crossterm::event::KeyCode::Up => {
+            let actuel = etat.selection_index(nb_lignes);
+            if actuel > 0 {
+                etat.set_selection(actuel - 1);
+            }
+            None
+        }
+        crossterm::event::KeyCode::Down => {
+            let actuel = etat.selection_index(nb_lignes);
+            if actuel < nb_lignes.saturating_sub(1) {
+                etat.set_selection(actuel + 1);
+            }
+            None
+        }
+        crossterm::event::KeyCode::Enter => {
+            let actuel = etat.selection_index(nb_lignes);
+            if actuel < nb_lignes {
+                Some(ActionJournal::Modifier(actuel))
+            } else {
+                None
+            }
+        }
+        crossterm::event::KeyCode::Delete | crossterm::event::KeyCode::Backspace => {
+            let actuel = etat.selection_index(nb_lignes);
+            if actuel < nb_lignes {
+                Some(ActionJournal::Supprimer(actuel))
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }
+}
