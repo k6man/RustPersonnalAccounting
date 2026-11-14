@@ -372,11 +372,13 @@ Ordre de priorité proposé :
   jamais un TOML tronqué / des préférences écrasées sans trace. Diagnostic au
   démarrage quand le TOML est corrompu (eprintln + valeurs par défaut,
   l'interface démarre toujours).
-- [ ] **#10 — Courbe du patrimoine O(mois × transactions)** (`viewmodel.rs`) :
-  `courbe_patrimoine` relance un `balances_at` complet par point (rejeu du
-  booking sur TOUT le ledger à chaque mois). Une seule passe incrémentale
-  le long de la chronologie suffit (appliquer les bookings et consigner le
-  dernier jour de chaque mois). Même axe pour `balance_of`.
+- [x] **#10 — Courbe du patrimoine O(mois × transactions)** (`viewmodel.rs`) :
+  `courbe_patrimoine` relançait un `balances_at` complet par point (rejeu du
+  booking sur tout le ledger à chaque mois). Remplacé par une passe
+  incrémentale unique : les soldes sont accumulés transaction après
+  transaction dans une map compte → devise → montant, et le patrimoine net
+  est consigné à chaque fin de mois. Complexite O(transactions) au lieu de
+  O(mois x transactions). Le format des étiquettes reste "AAAA-MM".
 - [ ] **#7 — Calendrier maison** (`viewmodel.rs`) : `fin_de_mois`/
   `est_bissextile` réimplémentent jiff avec `expect` (mois 0 → panic sur
   une API `pub`) ; `month_start_exclusive` (`household-budget/grid.rs`) fait

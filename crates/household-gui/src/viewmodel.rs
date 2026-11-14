@@ -8,7 +8,7 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use rust_decimal::Decimal;
-use rustledger_core::{AccountTypes, Directive, NaiveDate};
+use rustledger_core::{AccountTypes, Directive, IncompleteAmount, NaiveDate};
 
 use household_budget::BudgetGrid;
 use household_core::Snapshot;
@@ -694,6 +694,11 @@ fn est_actif_ou_passif(compte: &str, types: &AccountTypes) -> bool {
 
 /// Courbe du patrimoine net, par fin de mois, du premier au dernier mois
 /// transactionné (24 derniers points max).
+///
+/// Passe incrémentale unique sur les chronologie : les soldes sont accumulés
+/// transaction après transaction, et le patrimoine est consigné à chaque fin
+/// de mois. Complexite O(transactions) au lieu de O(mois x transactions)
+/// avec un `balances_at` relance par point.
 fn courbe_patrimoine(snapshot: &Snapshot, types: &AccountTypes) -> Vec<(String, Decimal)> {
     let Some(dernier) = snapshot.last_transaction_date() else {
         return Vec::new();
@@ -710,38 +715,60 @@ fn courbe_patrimoine(snapshot: &Snapshot, types: &AccountTypes) -> Vec<(String, 
         return Vec::new();
     };
 
-    let mut points = Vec::new();
+    // Dates de fin de mois entre premier et dernier (max 48 pour le garde-fou).
+    let mut dates_fin_mois: Vec<NaiveDate> = Vec::new();
     let mut annee = premier.year();
     let mut mois = u8::try_from(premier.month()).unwrap_or(1);
     let dernier_mois = u8::try_from(dernier.month()).unwrap_or(1);
     loop {
-        let fin = fin_de_mois(annee, mois);
-        let valeur = snapshot
-            .balances_at(fin, household_core::Through::EndOfDay)
-            .ok()
-            .map(|soldes| {
-                soldes
-                    .iter()
-                    .filter(|s| est_actif_ou_passif(&s.account, types))
-                    .filter_map(|s| s.amounts.get("EUR").copied())
-                    .sum::<Decimal>()
-            })
-            .unwrap_or_default();
-        points.push((format!("{annee}-{mois:02}"), valeur));
+        dates_fin_mois.push(fin_de_mois(annee, mois));
         if (annee, mois) == (dernier.year(), dernier_mois) {
             break;
         }
-        // Mois suivant.
         if mois == 12 {
             annee += 1;
             mois = 1;
         } else {
             mois += 1;
         }
-        if points.len() > 48 {
-            break; // garde-fou (4 ans de mois)
+        if dates_fin_mois.len() > 48 {
+            break;
         }
     }
+
+    // Passe incrémentale unique : soldes accumulés transaction après transaction.
+    let mut soldes: BTreeMap<String, BTreeMap<String, Decimal>> = BTreeMap::new();
+    let mut points: Vec<(String, Decimal)> = Vec::with_capacity(dates_fin_mois.len());
+    let entries = snapshot.entries();
+    let mut entree_idx = 0;
+
+    for &date_fin in &dates_fin_mois {
+        // Appliquer toutes les transactions <= date_fin (cumulatif, entree_idx avance).
+        while entree_idx < entries.len() {
+            match &entries[entree_idx].value {
+                Directive::Transaction(txn) if txn.date <= date_fin => {
+                    for posting in &txn.postings {
+                        if let Some(IncompleteAmount::Complete(a)) = &posting.value.units {
+                            *soldes
+                                .entry(posting.value.account.as_str().to_string())
+                                .or_default()
+                                .entry(a.currency.as_str().to_string())
+                                .or_default() += a.number;
+                        }
+                    }
+                    entree_idx += 1;
+                }
+                Directive::Transaction(_) => break, // après date_fin : arret pour cette date
+                _ => entree_idx += 1,               // directive non-transactionnee : sauter
+            }
+        }
+        let valeur = patrimoine_net(&soldes, types);
+        points.push((
+            format!("{:04}-{:02}", date_fin.year(), date_fin.month()),
+            valeur,
+        ));
+    }
+
     if points.len() > 24 {
         points.drain(..points.len() - 24);
     }
