@@ -331,10 +331,14 @@ largeur, barres carte budget 180→240 ; fenêtre 1200×760 → 1300×800 (min 9
   (`git init` + `main.beancount` à la racine) puis lancer
   `just setup-ledger …` — rien à attacher ce jour (aucune réelle
   configuration de ledger sur cette machine).
-- [ ] Cas limite (vu en vérif.) : pointer explicitement (argument ou
-  `RPA_LEDGER`) sur `examples/ledger/main.beancount` donne le mode Réel
-  SANS badge — la détection d'exemple devrait se faire sur le chemin
-  résolu (égal à `EXEMPLE_RELATIF`), pas seulement sur l'échelon de repli.
+- [x] Cas limite (vu en vérif.) : pointer explicitement (argument ou
+  `RPA_LEDGER`) sur `examples/ledger/main.beancount` donnait le mode Réel
+  SANS badge — la détection d'exemple se fait désormais sur le chemin
+  résolu (canonisé, égal à `EXEMPLE_RELATIF`), quel que soit l'échelon de
+  résolution (argument, `RPA_LEDGER`, config ou repli).
+  `resoudre_ledger` retourne `ModeLedger::Exemple` dès que le chemin
+  pointe sur l'exemple, donc le badge GUI et l'avertissement CLI
+  s'affichent correctement (3 tests de régression ajoutés).
 
 ### Revue de code — suite (2026-11-01, post-v0.1.0)
 

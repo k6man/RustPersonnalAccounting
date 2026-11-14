@@ -125,6 +125,28 @@ impl fmt::Display for ResolutionLedger {
     }
 }
 
+/// Chemin canonique du ledger d'exemple, résolu indépendamment du
+/// répertoire courant : l'exemple se trouve deux niveaux au-dessus du
+/// crate `household-core`, à la racine du workspace. Canoniser les deux
+/// côtés (exemple et chemin résolu) évite qu'un même fichier soit vu comme
+/// deux fichiers distincts (symlink `/var` → `/private/var` sur macOS, etc.).
+fn exemple_canonise() -> Option<PathBuf> {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .join(EXEMPLE_RELATIF)
+        .canonicalize()
+        .ok()
+}
+
+/// Vrai si `chemin` pointe sur le ledger d'exemple du dépôt (données
+/// fictives), quel que soit l'échelon de résolution qui l'a sélectionné.
+fn est_le_chemin_exemple(chemin: &Path) -> bool {
+    let Some(exemple) = exemple_canonise() else {
+        return false;
+    };
+    chemin.canonicalize().is_ok_and(|c| c == exemple)
+}
+
 /// Résout le ledger à charger (infaillible : renvoie toujours un chemin à
 /// tenter ; les problèmes sont portés par le champ `avertissement`).
 #[must_use]
@@ -135,6 +157,9 @@ pub fn resoudre_ledger(
 ) -> ResolutionLedger {
     // 1..=3 : chemins explicites en ordre de priorité ; le premier non vide
     // gagne, qu'il existe ou non (jamais de repli silencieux sur l'exemple).
+    // Pointer explicitement sur l'exemple (`EXEMPLE_RELATIF`) est détecté
+    // par le chemin (et non seulement par l'échelon de repli) : le mode est
+    // alors `Exemple` et l'interface affiche le badge « données fictives ».
     let explicites = [
         (argument.map(Path::to_path_buf), SourceResolution::Argument),
         (
@@ -148,10 +173,15 @@ pub fn resoudre_ledger(
     ];
     for (chemin_opt, source) in explicites {
         let Some(chemin) = chemin_opt else { continue };
+        let mode = if est_le_chemin_exemple(&chemin) {
+            ModeLedger::Exemple
+        } else {
+            ModeLedger::Reel
+        };
         if chemin.exists() {
             return ResolutionLedger {
                 chemin,
-                mode: ModeLedger::Reel,
+                mode,
                 source,
                 avertissement: None,
             };
@@ -162,7 +192,7 @@ pub fn resoudre_ledger(
                 source.libelle()
             )),
             chemin,
-            mode: ModeLedger::Reel,
+            mode,
             source,
         };
     }
@@ -292,5 +322,47 @@ mod tests {
         assert!(SourceResolution::VariableEnv.surcharge_config());
         assert!(!SourceResolution::ChampConfig.surcharge_config());
         assert!(!SourceResolution::RepliExemple.surcharge_config());
+    }
+
+    /// Chemin absolu du ledger d'exemple, résolu indépendamment du `cwd`
+    /// (les tests s'exécutent depuis le répertoire du crate).
+    fn exemple_absolu() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .join(EXEMPLE_RELATIF)
+    }
+
+    #[test]
+    fn argument_explicite_vers_exemple_est_mode_exemple() {
+        let exemple = exemple_absolu();
+        assert!(
+            exemple.exists(),
+            "exemple introuvable : {}",
+            exemple.display()
+        );
+        let resolu = resoudre_ledger(Some(exemple.as_path()), None, None);
+        assert_eq!(resolu.source, SourceResolution::Argument);
+        assert_eq!(resolu.mode, ModeLedger::Exemple);
+        assert!(resolu.mode.est_exemple());
+        assert_eq!(resolu.avertissement, None);
+    }
+
+    #[test]
+    fn variable_env_vers_exemple_est_mode_exemple() {
+        let exemple = exemple_absolu();
+        let resolu = resoudre_ledger(None, Some(exemple.to_str().unwrap()), None);
+        assert_eq!(resolu.source, SourceResolution::VariableEnv);
+        assert_eq!(resolu.mode, ModeLedger::Exemple);
+        assert!(resolu.mode.est_exemple());
+    }
+
+    #[test]
+    fn chemin_explicite_autre_que_exemple_reste_mode_reel() {
+        let fichier = temporaire("autre");
+        let resolu = resoudre_ledger(Some(fichier.as_path()), None, None);
+        assert_eq!(resolu.mode, ModeLedger::Reel);
+        assert_eq!(resolu.source, SourceResolution::Argument);
+        assert!(!resolu.mode.est_exemple());
+        nettoyer(&fichier);
     }
 }
