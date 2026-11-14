@@ -231,6 +231,36 @@ impl App {
             }
         }
 
+        // Délégation vers la vue active pour les touches spécifiques au
+        // contexte (flèches, Entrée, Suppr…). L'emprunt de donnees est limité
+        // à un bloc pour pouvoir modifier self ensuite.
+        let action = {
+            let donnees = self.donnees.as_ref();
+            match donnees {
+                Some(d) => {
+                    let nb = d.journal.lignes.len();
+                    crate::views::journal::on_key(key, &mut self.journal, nb)
+                }
+                None => None,
+            }
+        };
+
+        match action {
+            Some(crate::views::journal::ActionJournal::Modifier(index)) => {
+                let donnees = self.donnees.as_ref();
+                if let Some(ligne) = donnees
+                    .and_then(|d| d.journal.lignes.iter().find(|l| l.index == index).cloned())
+                {
+                    self.saisie = crate::views::saisie::UiState::modification(&ligne);
+                    self.ecran_actif = Onglet::Saisie.index();
+                }
+            }
+            Some(crate::views::journal::ActionJournal::Supprimer(index)) => {
+                self.demander_suppression(index);
+            }
+            _ => {}
+        }
+
         false
     }
 
