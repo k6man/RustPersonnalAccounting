@@ -109,8 +109,8 @@ impl BudgetGrid {
         let mut warnings: BTreeSet<String> = BTreeSet::new();
 
         for month in 1..=12u8 {
-            let from = month_start(year, month);
-            let to = month_start_exclusive(year, month);
+            let from = month_start(year, month).expect("mois valide");
+            let to = month_start_exclusive(year, month).expect("mois suivant valide");
             let comparison = budgets.compare(directives, types, from, to, true, None);
 
             for row in &comparison.rows {
@@ -176,17 +176,19 @@ fn bucket_label(bucket: &Bucket, _types: &AccountTypes) -> String {
 }
 
 /// 1er jour du mois (`year`, `month`).
+/// Retourne `None` si la date est invalide (mois hors 1..=12, année hors limites).
 #[must_use]
-pub fn month_start(year: i16, month: u8) -> NaiveDate {
-    rustledger_core::naive_date(i32::from(year), u32::from(month), 1).expect("mois valide 1..=12")
+pub fn month_start(year: i16, month: u8) -> Option<NaiveDate> {
+    NaiveDate::new(year, i8::try_from(month).ok()?, 1).ok()
 }
 
 /// 1er jour du mois **suivant** (borne exclusive de la fenêtre).
+/// Retourne `None` si la date est invalide (pas d'année fausse silencieuse à i16::MAX).
 #[must_use]
-pub fn month_start_exclusive(year: i16, month: u8) -> NaiveDate {
+pub fn month_start_exclusive(year: i16, month: u8) -> Option<NaiveDate> {
     if month == 12 {
-        month_start(year.checked_add(1).unwrap_or(year), 1)
+        NaiveDate::new(year.checked_add(1)?, 1, 1).ok()
     } else {
-        month_start(year, month + 1)
+        NaiveDate::new(year, i8::try_from(month).ok()? + 1, 1).ok()
     }
 }

@@ -354,13 +354,15 @@ fn duplication_refuse_pas_darrondi_nul() {
 
 #[test]
 fn bornes_de_fenetres_mensuelles_sont_exactes() {
-    let january = grid::month_start(2026, 1);
-    let february = grid::month_start_exclusive(2026, 1);
+    let january = grid::month_start(2026, 1).expect("janvier 2026");
+    let february = grid::month_start_exclusive(2026, 1).expect("fevrier 2026");
     assert_eq!(january.to_string(), "2026-01-01");
     assert_eq!(february.to_string(), "2026-02-01");
     // Décembre → 1er janvier de l'année suivante.
     assert_eq!(
-        grid::month_start_exclusive(2026, 12).to_string(),
+        grid::month_start_exclusive(2026, 12)
+            .expect("decembre 2026")
+            .to_string(),
         "2027-01-01"
     );
 }

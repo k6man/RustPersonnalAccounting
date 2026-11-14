@@ -554,7 +554,8 @@ fn cascade(
     rapports: &RapportsData,
     annee: i16,
 ) -> CascadeAnnee {
-    let debut_exercice = fin_de_mois(annee.checked_sub(1).unwrap_or(annee), 12);
+    let debut_exercice =
+        fin_de_mois(annee.checked_sub(1).unwrap_or(annee), 12).expect("fin de decembre valide");
     let soldes_debut = snapshot
         .balances_at(debut_exercice, household_core::Through::EndOfDay)
         .map(soldes_en_map)
@@ -720,8 +721,8 @@ fn courbe_patrimoine(snapshot: &Snapshot, types: &AccountTypes) -> Vec<(String, 
     let mut annee = premier.year();
     let mut mois = u8::try_from(premier.month()).unwrap_or(1);
     let dernier_mois = u8::try_from(dernier.month()).unwrap_or(1);
-    loop {
-        dates_fin_mois.push(fin_de_mois(annee, mois));
+    while let Some(fin) = fin_de_mois(annee, mois) {
+        dates_fin_mois.push(fin);
         if (annee, mois) == (dernier.year(), dernier_mois) {
             break;
         }
@@ -775,28 +776,25 @@ fn courbe_patrimoine(snapshot: &Snapshot, types: &AccountTypes) -> Vec<(String, 
     points
 }
 
-/// Dernier jour du mois (gère février bissextile).
+/// Dernier jour du mois (gère février bissextile via jiff).
+/// Retourne `None` si la date est invalide (mois hors 1..=12, année hors limites).
 #[must_use]
-pub fn fin_de_mois(annee: i16, mois: u8) -> NaiveDate {
-    let jour = match mois {
-        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
-        4 | 6 | 9 | 11 => 30,
-        _ => {
-            if est_bissextile(i32::from(annee)) {
-                29
-            } else {
-                28
-            }
-        }
-    };
-    rustledger_core::naive_date(i32::from(annee), u32::from(mois), jour)
-        .expect("fin de mois valide")
+pub fn fin_de_mois(annee: i16, mois: u8) -> Option<NaiveDate> {
+    let mois = i8::try_from(mois).ok()?;
+    NaiveDate::new(annee, mois, 1)
+        .ok()
+        .map(|d| d.last_of_month())
 }
 
-/// Année bissextile grégorienne.
+/// 1er jour du mois suivant (borne exclusive de la fenêtre).
+/// Retourne `None` si la date est invalide.
 #[must_use]
-pub fn est_bissextile(annee: i32) -> bool {
-    (annee % 4 == 0 && annee % 100 != 0) || annee % 400 == 0
+pub fn mois_suivant_1er(annee: i16, mois: u8) -> Option<NaiveDate> {
+    if mois == 12 {
+        NaiveDate::new(annee.checked_add(1)?, 1, 1).ok()
+    } else {
+        NaiveDate::new(annee, i8::try_from(mois).ok()? + 1, 1).ok()
+    }
 }
 
 fn horodatage() -> String {

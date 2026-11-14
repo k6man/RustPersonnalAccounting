@@ -379,11 +379,13 @@ Ordre de priorité proposé :
   transaction dans une map compte → devise → montant, et le patrimoine net
   est consigné à chaque fin de mois. Complexite O(transactions) au lieu de
   O(mois x transactions). Le format des étiquettes reste "AAAA-MM".
-- [ ] **#7 — Calendrier maison** (`viewmodel.rs`) : `fin_de_mois`/
-  `est_bissextile` réimplémentent jiff avec `expect` (mois 0 → panic sur
-  une API `pub`) ; `month_start_exclusive` (`household-budget/grid.rs`) fait
-  `unwrap_or(year)` — année fausse silencieuse à `i16::MAX`. Passer à jiff
-  (`days_in_month`, arithmétique de dates) et retourner `Option`.
+- [x] **#7 — Calendrier maison** (`viewmodel.rs` + `household-budget/grid.rs`) :
+  `fin_de_mois`/`est_bissextile` réimplémentaient jiff avec `expect` (mois 0
+  → panic sur une API `pub`) ; `month_start_exclusive` faisait
+  `unwrap_or(year)` — année fausse silencieuse à `i16::MAX`. Remplacés par
+  jiff (`Date::new`, `last_of_month`, `checked_add`) retournant
+  `Option<NaiveDate>` ; `mois_suivant_1er` ajouté comme remplacement sûr de
+  `month_start_exclusive`. Tous les appelants et tests mis à jour.
 - Nits à grappiller (sans urgence) :
   - `viewmodel::rapports` classe par `starts_with("Expenses")` sans `:` —
     utiliser `AccountTypeKind` comme le fait déjà `patrimoine_net` ;
