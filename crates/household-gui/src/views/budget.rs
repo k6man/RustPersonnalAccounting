@@ -3,7 +3,7 @@
 use ratatui::{
     Frame,
     style::{Color, Style},
-    widgets::{Block, Borders, List, ListItem, Paragraph},
+    widgets::{Block, Borders, Paragraph},
 };
 
 use household_budget::BudgetGrid;

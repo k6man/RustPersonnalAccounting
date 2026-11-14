@@ -4,7 +4,7 @@ use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout},
     style::{Color, Modifier, Style},
-    widgets::{Block, Borders, List, ListItem, Paragraph, Row, Table},
+    widgets::{Block, Borders, Paragraph, Row, Table},
 };
 
 use crate::worker::GitDonnees;
@@ -33,7 +33,7 @@ impl UiState {
 }
 
 /// Dessine l'écran git.
-pub fn afficher(f: &mut Frame, git: &GitDonnees, etat: &mut UiState) -> Option<ActionGit> {
+pub fn afficher(f: &mut Frame, git: &GitDonnees, _etat: &mut UiState) -> Option<ActionGit> {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
