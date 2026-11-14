@@ -458,11 +458,14 @@ fn canonize(path: &Path) -> PathBuf {
 /// fatale *nouvelle* par rapport à l'état initial du ledger : un diagnostic
 /// préexistant (warning ou erreur fatale déjà présente) ne doit pas verrouiller
 /// le ledger définitivement.
+///
+/// Le numéro de ligne est **exclu** de la comparaison : insérer des lignes
+/// avant une assertion décale ses numéros de ligne sans changer le fond de
+/// l'erreur, ce qui ne doit pas compter comme une erreur "nouvelle".
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 struct CleDiagnostic {
     code: String,
     fichier: Option<String>,
-    ligne: Option<usize>,
     message: String,
 }
 
@@ -471,7 +474,6 @@ impl From<&LedgerError> for CleDiagnostic {
         Self {
             code: e.code.clone(),
             fichier: e.location.as_ref().map(|l| l.file.display().to_string()),
-            ligne: e.location.as_ref().map(|l| l.line),
             message: e.message.clone(),
         }
     }
@@ -480,8 +482,8 @@ impl From<&LedgerError> for CleDiagnostic {
 impl fmt::Display for CleDiagnostic {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.code)?;
-        if let Some(ligne) = self.ligne {
-            write!(f, " @ ligne {ligne}")?;
+        if let Some(fichier) = &self.fichier {
+            write!(f, " @ {fichier}")?;
         }
         write!(f, ": {}", self.message)
     }
@@ -606,6 +608,20 @@ fn atomic_write(target: &Path, bytes: &[u8]) -> Result<(), CoreError> {
     Ok(())
 }
 
+/// Garde du verrou d'ecriture : supprime le fichier `.write.lock` a la drop,
+/// meme en cas de panic dans la section critique. Sans cela, un panic
+/// laisse le verrou orphelin et le nettoyage anti-stale n'intervient qu'au
+/// bout de 120 s (demi-attente).
+struct LedgerLock {
+    path: PathBuf,
+}
+
+impl Drop for LedgerLock {
+    fn drop(&mut self) {
+        let _ = fs::remove_file(&self.path);
+    }
+}
+
 fn with_ledger_lock<T>(
     main: &Path,
     body: impl FnOnce() -> Result<T, CoreError>,
@@ -621,9 +637,12 @@ fn with_ledger_lock<T>(
             Ok(mut file) => {
                 let _ = writeln!(file, "{}", std::process::id());
                 let _ = file.sync_all();
-                let outcome = body();
-                let _ = fs::remove_file(&lock_path);
-                return outcome;
+                // Le garde supprime le verrou a la fin de la section
+                // critique, y compris en cas de panic.
+                let _garde = LedgerLock {
+                    path: lock_path.clone(),
+                };
+                return body();
             }
             Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
                 // Verrou périmé ? Les mtime de l'horloge murale servent de garde-fou.
@@ -680,4 +699,32 @@ fn nanos() -> u128 {
 
 fn temp_dir(prefix: &str) -> PathBuf {
     std::env::temp_dir().join(format!("{prefix}-{}-{}", std::process::id(), nanos()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Verifie que le garde Drop nettoie le fichier .write.lock meme
+    /// en cas de panic dans la section critique.
+    #[test]
+    fn verrou_nettoye_apres_panic() {
+        let dir = temp_dir("household-lock-test");
+        let _ = std::fs::create_dir_all(&dir);
+        let main = dir.join("main.beancount");
+        let lock_path = dir.join(LOCK_FILE);
+
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            with_ledger_lock(&main, || -> Result<(), CoreError> {
+                panic!("panique dans la section critique");
+            })
+        }));
+        assert!(result.is_err(), "le panic doit se propager");
+        assert!(
+            !lock_path.exists(),
+            "le verrou doit etre nettoye apres panic : {}",
+            lock_path.display()
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

@@ -361,10 +361,11 @@ Ordre de priorité proposé :
   `Empreinte::de_ligne` ; `localiser` l'utilise comme critère de
   discrimination quand il est présent (`None` = rétro-compatible, critère
   ignoré). Tests de relocalisation mis à jour.
-- [ ] **#6 — Verrou sans garde Drop** (`household-core/writer.rs`) : un panic
-  dans le corps de `with_ledger_lock` laisse `.write.lock` orphelin
-  (nettoyage anti-stale repoussé à 120 s + demi-attente). Un petit guard
-  struct avec `Drop` qui retire le fichier de verrou.
+- [x] **#6 — Verrou sans garde Drop** (`household-core/writer.rs`) : un panic
+  dans `with_ledger_lock` laissait `.write.lock` orphelin (nettoyage anti-stale
+  repoussé à 120 s). Ajout d'un petit guard `LedgerLock` avec `Drop` qui
+  supprime le fichier de verrou à la fin de la section critique, y compris en
+  cas de panic. Test de régression `verrou_nettoye_apres_panic` ajouté.
 - [ ] **#8 — Préférences non atomiques** (`household-gui/config.rs`) : écriture
   directe (pas de tmp+rename) et TOML corrompu → défauts silencieux puis
   réécriture (préférences écrasées sans trace). Réutiliser une écriture
