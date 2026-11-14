@@ -817,3 +817,91 @@ crates ~/.cargo/registry/…-0.24.0 ; à revoir si épinglage un jour déplacé)
 - Cohabitation avec Fava (les budgets sont déjà dans sa convention — argument de compatibilité).
 - Rôles/conjoint : signature des commits, second fichier de préférences.
 - Export PDF des rapports ; widgets système ; notifications push du dépassement de plafond.
+
+## Conversion egui → ratatui (TUI) — nouvelle piste
+
+> **Objectif** : remplacer l'interface graphique fenêtrée (egui 0.37 + eframe, binaire
+> `compta-foyer`) par une interface terminale (TUI) ratatui + crossterm, en conservant
+> **toute** la logique métier (worker, view-models, writers, résolution du ledger) intacte.
+>
+> L'architecture actuelle est déjà bien désaccouplée : `viewmodel.rs` (`UiData` pur,
+> pas de dépendance egui) et `worker.rs` (Command/LoadOutcome, watcher, debounce) ne
+> changent pas. Seules les vues `views/` et `app.rs` sont réécrites.
+
+### Dépendances
+
+- À ajouter : `ratatui 0.26`, `crossterm 0.27`, crate de saisie texte (ex. `tui-textinput`).
+- À retirer : `eframe`, `egui`, `egui_extras`, `egui_plot` (plus de courbes vectorielles).
+
+### Phase 0 — Préparation (référence)
+
+- [ ] Vérifier que `viewmodel.rs` et `worker.rs` ne dépendent pas d'egui (déjà le cas)
+- [ ] Épingler ratatui/crossterm dans `Cargo.toml` workspace
+- [ ] `just check` vert en l'état (référence avant migration)
+
+### Phase 1 — Squelette ratatui
+
+- [ ] Remplacer eframe par crossterm + ratatui dans `main.rs`/`lib.rs`
+- [ ] Boucle d'événements : `poll` crossterm → traduction en `Command` vers le worker → rendu ratatui
+- [ ] Écran placeholder (texte statique) pour valider la boucle
+- [ ] `just check` vert
+
+### Phase 2 — Barre d'en-tête + sélecteur d'écrans
+
+- [ ] Badge `LEDGER D'EXEMPLE — données fictives` + chemin + source de résolution
+- [ ] Sélecteur d'écran actif (`Tabs` ou liste) avec raccourcis `Ctrl+1..7`
+- [ ] Flash messages (succès vert / erreur rouge, clic = acquittement)
+
+### Phase 3 — Tableau de bord
+
+- [ ] Soldes CC/LivretA/LDD + jauges de plafond (3 états : normal / alerte / dépassement)
+- [ ] Patrimoine net (Σ Assets − Σ Liabilities, Equity exclu)
+- [ ] Budget vs réel du mois courant (8 postes les plus tendus)
+- [ ] Courbe du patrimoine → `BarChart` ou sparkline texte (pas de `egui_plot`)
+
+### Phase 4 — Journal
+
+- [ ] `Table` ratatui avec pagination 100/page
+- [ ] Filtres texte / compte-préfixe / tag / dates / montants (parsing tolérant)
+- [ ] Détail transaction (postings, tags/liens, origine fichier:ligne:entrée)
+- [ ] Sélection → modification / suppression (relocalisation par empreinte)
+
+### Phase 5 — Saisie
+
+- [ ] Postings dynamiques (+/×), ligne d'équilibrage explicite
+- [ ] Validation de forme (équilibre par devise, deux niveaux)
+- [ ] Autocomplétion comptes (ouverts à la date) et tiers (fréquence)
+- [ ] Intégration worker `Command::Ecrire` / `Modifier` / `Supprimer`
+
+### Phase 6 — Budget
+
+- [ ] Grille postes × 12 mois avec arbre hiérarchique repliable (groupes synthétisés)
+- [ ] Cellules éditables + diff de confirmation (supersession expliquée)
+- [ ] Duplication d'année N+1 (pour cent ±, pas d'arrondi)
+- [ ] Rollover par famille (disponible cumulé, persistance TOML locale)
+
+### Phase 7 — Rapports + Graphiques
+
+- [ ] Heatmap catégories × mois (intensité relative)
+- [ ] Barres N vs N−1, revenus, variation nette d'épargne, taux d'épargne
+- [ ] Répartition dépenses (top 8 + « Autres »), cascade annuelle (identité comptable)
+- [ ] Budget vs réel du mois (2 `BarChart` groupés)
+
+### Phase 8 — Git
+
+- [ ] Statut par fichier (tableau), résumé du diff (fichiers/insertions/suppressions)
+- [ ] Message de commit prérempli (`ledger: AAAA-MM — saisie/édition`)
+- [ ] Commit avec validation du ledger préalable côté app (ADR-002)
+
+### Phase 9 — Polish et tests
+
+- [ ] Tests d'intégration GUI (headless, vues testables sans affichage réel)
+- [ ] `just check` vert (fmt + clippy `-D warnings` + tests workspace + `rledger check`)
+- [ ] Gestion d'erreurs homogène (flash/bannière, jamais d'écran de mort)
+
+### Risques et atténuation
+
+- **Pas de fenêtres flottantes** : ratatui est plein écran → utiliser des `Tabs` ou des zones empilées plutôt que `egui::Window`.
+- **Pas de `egui_plot`** : remplacer la courbe du patrimoine et la cascade par des `BarChart` / sparklines texte (pas de donut non plus, cohérent avec l'existant).
+- **Saisie de texte** : egui gère `TextEdit` nativement ; en ratatui il faut gérer le buffer, le curseur et l'édition manuellement — utiliser une crate de text input éprouvée.
+- **Raccourcis clavier** : mapper `Ctrl+1..7`, `Entrée`, `Échap`, flèches via `crossterm`.
