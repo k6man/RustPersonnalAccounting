@@ -212,7 +212,11 @@ impl Brouillon {
                 });
             let contrepartie = -reste;
             *residus.entry(devise.clone()).or_default() += contrepartie;
-            postings.push(Posting::new(compte, Amount::new(contrepartie, devise)));
+            // Ne pas ecrire un posting d'equilibrage a 0.00 (bruit dans le
+            // fichier) quand le residu est deja nul.
+            if !contrepartie.is_zero() {
+                postings.push(Posting::new(compte, Amount::new(contrepartie, devise)));
+            }
         }
 
         let mut transaction = Transaction::new(date, self.libelle.trim()).with_flag(self.flag);
