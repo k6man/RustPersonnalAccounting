@@ -14,8 +14,7 @@ use std::sync::mpsc::{Receiver, Sender};
 use std::thread;
 use std::time::Duration;
 
-use rustledger_core::Directive;
-use rustledger_core::NaiveDate;
+use rustledger_core::{Directive, IncompleteAmount, NaiveDate};
 
 use crate::saisie::{Brouillon, Empreinte};
 use crate::viewmodel::{self, UiData};
@@ -317,6 +316,20 @@ pub fn localiser(
                     Some(p.as_str().to_string()) == empreinte.tiers
                 })
                 && t.narration.as_str() == empreinte.libelle
+                && match empreinte.montant {
+                    // Quand le montant est connu, il discrimine les jumelles.
+                    // Même logique de montant que LigneJournal (absolu du
+                    // plus grand posting) pour que la comparaison soit
+                    // cohérente avec l'affichage du journal.
+                    Some(m) => t.postings.iter().any(|p| {
+                        matches!(
+                            &p.units,
+                            Some(IncompleteAmount::Complete(a))
+                                if a.number.abs() == m
+                        )
+                    }),
+                    None => true, // rétro-compatible : critère ignoré
+                }
         }
         _ => false,
     };

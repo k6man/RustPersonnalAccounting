@@ -123,6 +123,7 @@ fn relocalisation_par_empreinte_et_refus_si_absente() {
         date: "2026-03-31".parse().unwrap(),
         tiers: Some("Banque".to_string()),
         libelle: "Frais de tenue de compte".to_string(),
+        montant: None,
     };
     let index = household_gui::worker::localiser(&snapshot, 0, &empreinte);
     assert!(index.is_ok(), "relocalisée par empreinte : {index:?}");
@@ -132,6 +133,7 @@ fn relocalisation_par_empreinte_et_refus_si_absente() {
         date: "2026-04-01".parse().unwrap(),
         tiers: Some("Inconnu".to_string()),
         libelle: "Transaction disparue".to_string(),
+        montant: None,
     };
     let echec = household_gui::worker::localiser(&snapshot, 0, &fantome);
     assert!(echec.is_err());

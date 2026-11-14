@@ -46,12 +46,18 @@ pub struct Brouillon {
 
 /// Empreinte d'identification d'une transaction existante : l'index d'entrée
 /// peut avoir bougé si le ledger a changé depuis le chargement de la GUI ;
-/// l'empreinte (date, tiers, libellé) permet de la relocaliser sûrement.
+/// l'empreinte (date, tiers, libellé, montant principal) permet de la
+/// relocaliser sûrement — le montant discrimine les transactions "jumelles"
+/// (même date + tiers + libellé) qui auraient autrement la même empreinte.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Empreinte {
     pub date: NaiveDate,
     pub tiers: Option<String>,
     pub libelle: String,
+    /// Montant principal (premier posting significatif) : discriminant contre
+    /// les jumelles. `None` si le ledger a été chargé avant ce champ (rétro
+    /// compatible : le critère est alors ignoré dans `localiser`).
+    pub montant: Option<Decimal>,
 }
 
 impl Empreinte {
@@ -61,6 +67,7 @@ impl Empreinte {
             date: ligne.date,
             tiers: ligne.tiers.clone(),
             libelle: ligne.libelle.clone(),
+            montant: ligne.montant,
         }
     }
 }

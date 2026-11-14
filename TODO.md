@@ -353,11 +353,14 @@ Ordre de priorité proposé :
   (`ErrorSeverity::Error`) et ne refuse que les diagnostics **nouveaux**
   (comparaison avant/après sur la copie scratch). Un diagnostic préexistant
   ne verrouille plus le ledger.
-- [ ] **#3 — Empreinte ambiguë** (`worker.rs::localiser`) : deux transactions
-  jumelles le même jour (même date + tiers + libellé) satisfont la même
-  empreinte et `position()` peut rewriter la mauvaise ligne. Ajouter un
-  discriminant à l'empreinte (montant principal, ou `fichier:ligne` d'origine
-  en secours quand l'index est encore valide).
+- [x] **#3 — Empreinte ambiguë** (`worker.rs::localiser` / `saisie.rs`) : deux
+  transactions jumelles le même jour (même date + tiers + libellé)
+  satisfaisaient la même empreinte et `position()` pouvait rewriter la
+  mauvaise ligne. `Empreinte` gagne un champ `montant: Option<Decimal>`
+  (absolu du plus grand posting, même logique que `LigneJournal`) rempli par
+  `Empreinte::de_ligne` ; `localiser` l'utilise comme critère de
+  discrimination quand il est présent (`None` = rétro-compatible, critère
+  ignoré). Tests de relocalisation mis à jour.
 - [ ] **#6 — Verrou sans garde Drop** (`household-core/writer.rs`) : un panic
   dans le corps de `with_ledger_lock` laisse `.write.lock` orphelin
   (nettoyage anti-stale repoussé à 120 s + demi-attente). Un petit guard
