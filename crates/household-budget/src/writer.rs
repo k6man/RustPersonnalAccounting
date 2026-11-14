@@ -244,7 +244,8 @@ fn directive_date_iso(directive: &Directive) -> Option<String> {
 }
 
 /// Garantit la présence de `include "budgets/YYYY.beancount"` dans `main` :
-/// inséré après le dernier include de budget, sinon après
+/// inséré **trié par année croissante** (après le dernier include de budget
+/// d'année inférieure, avant le premier d'année supérieure), sinon après
 /// `include "accounts.beancount"`, sinon après le dernier include.
 fn ensure_include(old: &str, year: i16, include_line: &str) -> String {
     let needle = format!("include \"budgets/{year}.beancount\"");
@@ -253,25 +254,52 @@ fn ensure_include(old: &str, year: i16, include_line: &str) -> String {
     }
 
     let lines: Vec<&str> = old.lines().collect();
+
+    /// Extrait l'année d'une ligne `include "budgets/YYYY.beancount"`.
+    fn budget_year(line: &str) -> Option<i16> {
+        let trimmed = line.trim_start();
+        trimmed
+            .strip_prefix("include \"budgets/")
+            .and_then(|s| s.strip_suffix(".beancount\""))
+            .and_then(|s| s.trim_end_matches('"').parse().ok())
+    }
+
     let is_budget_include = |line: &str| line.trim_start().starts_with("include \"budgets/");
     let is_accounts = |line: &str| line.trim() == "include \"accounts.beancount\"";
     let is_include = |line: &str| line.trim_start().starts_with("include ");
 
+    // Position d'insertion pour maintenir les includes de budget triés
+    // par année croissante.
     let position = lines
         .iter()
-        .rposition(|&line| is_budget_include(line))
-        .map(|index| index + 1)
+        .enumerate()
+        .find(|(_, line)| {
+            is_budget_include(line)
+                && budget_year(line).is_some_and(|y| y > year)
+        })
+        .map(|(index, _)| index) // insérer juste avant le premier budget > year
         .or_else(|| {
+            // Aucune année supérieure : insérer après le dernier include de budget
+            lines
+                .iter()
+                .enumerate()
+                .rfind(|(_, line)| is_budget_include(line))
+                .map(|(index, _)| index + 1)
+        })
+        .or_else(|| {
+            // Pas d'include de budget : après include "accounts.beancount"
             lines
                 .iter()
                 .position(|&line| is_accounts(line))
                 .map(|i| i + 1)
         })
         .or_else(|| {
+            // Sinon : après le dernier include
             lines
                 .iter()
-                .rposition(|&line| is_include(line))
-                .map(|i| i + 1)
+                .enumerate()
+                .rfind(|(_, line)| is_include(line))
+                .map(|(i, _)| i + 1)
         })
         .unwrap_or(lines.len());
 
