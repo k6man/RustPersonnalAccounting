@@ -4,7 +4,7 @@ use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout},
     style::{Color, Modifier, Style},
-    widgets::{Block, Borders, Gauge, List, ListItem, Paragraph, Row, Table},
+    widgets::{Block, Borders, List, ListItem, Paragraph, Row, Table},
 };
 
 use crate::fmt::eur;
@@ -42,15 +42,15 @@ pub fn afficher(f: &mut Frame, donnees: &DashboardData) -> Option<ActionDashboar
     let soldes = vec![
         ListItem::new(format!(
             "  Compte courant   : {}",
-            donnees.solde_cc.map_or("–".to_string(), |s| eur(s))
+            donnees.solde_cc.map_or("–".to_string(), eur)
         )),
         ListItem::new(format!(
             "  Livret A         : {}",
-            donnees.solde_livret_a.map_or("–".to_string(), |s| eur(s))
+            donnees.solde_livret_a.map_or("–".to_string(), eur)
         )),
         ListItem::new(format!(
             "  LDD              : {}",
-            donnees.solde_ldd.map_or("–".to_string(), |s| eur(s))
+            donnees.solde_ldd.map_or("–".to_string(), eur)
         )),
     ];
     let liste_soldes =
@@ -61,8 +61,7 @@ pub fn afficher(f: &mut Frame, donnees: &DashboardData) -> Option<ActionDashboar
     let jauges_items: Vec<ListItem> = donnees
         .jauges
         .iter()
-        .enumerate()
-        .map(|(i, jauge)| {
+        .map(|jauge| {
             let fraction = EtatJauge::fraction(&EtatJauge::Ok, jauge.courant, jauge.plafond);
             let etat_str = match jauge.etat {
                 EtatJauge::Ok => "OK",

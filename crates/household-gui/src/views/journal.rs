@@ -3,12 +3,12 @@
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout},
-    style::{Color, Modifier, Style},
-    widgets::{Block, Borders, List, ListItem, Paragraph, Row, Table, TableState, Wrap},
+    style::{Modifier, Style},
+    widgets::{Block, Borders, Paragraph, Row, Table, TableState},
 };
 
 use crate::fmt::eur;
-use crate::viewmodel::{JournalData, LigneJournal};
+use crate::viewmodel::JournalData;
 
 /// Action utilisateur retournée par l'écran journal.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -72,15 +72,14 @@ pub fn afficher(f: &mut Frame, donnees: &JournalData, etat: &mut UiState) -> Opt
         .lignes
         .iter()
         .take(50) // pagination simple : 50 lignes max
-        .enumerate()
-        .map(|(i, ligne)| {
+        .map(|ligne| {
             let compte_str: String = ligne
                 .lignes_posting
                 .iter()
                 .map(|p| p.compte.clone())
                 .collect::<Vec<_>>()
                 .join(", ");
-            let tags_str: String = ligne.tags.iter().cloned().collect::<Vec<_>>().join(" ");
+            let tags_str: String = ligne.tags.to_vec().join(" ");
             let flag = if ligne.flag == '*' { "" } else { "!" };
             let montant = ligne
                 .montant
