@@ -698,7 +698,17 @@ fn nanos() -> u128 {
 }
 
 fn temp_dir(prefix: &str) -> PathBuf {
-    std::env::temp_dir().join(format!("{prefix}-{}-{}", std::process::id(), nanos()))
+    // Compteur atomique : les tests d'écriture tournent en parallèle dans le
+    // même processus et l'horloge murale (résolution ~µs sur macOS) ne suffit
+    // pas à distinguer deux appels simultanés (même PID, mêmes nanos).
+    static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let seq = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    std::env::temp_dir().join(format!(
+        "{prefix}-{}-{}-{}",
+        std::process::id(),
+        nanos(),
+        seq
+    ))
 }
 
 #[cfg(test)]

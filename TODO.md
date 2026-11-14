@@ -387,6 +387,13 @@ Ordre de priorité proposé :
   `Option<NaiveDate>` ; `mois_suivant_1er` ajouté comme remplacement sûr de
   `month_start_exclusive`. Tous les appelants et tests mis à jour.
 - Nits à grappiller (sans urgence) :
+  - Correction du flakiness des répertoires temporaires de test : tous les
+    `temp_dir`/`temporaire`/`chemin_temporaire` utilisent désormais un
+    `AtomicU64` en plus de `SystemTime::now()` + PID, de sorte que deux tests
+    parallèles dans le même processus (même PID, mêmes nanos) ne créent plus
+    le même répertoire/fichier temporaire. Concerne `household-core` (writer +
+    résolution), `household-gui` (config, y compris le fichier temporaire de
+    `sauver_vers` en production) et les `tests/common/mod.rs` (déjà équipés).
   - `viewmodel::rapports` classe par `starts_with("Expenses")` sans `:` —
     utiliser `AccountTypeKind` comme le fait déjà `patrimoine_net` ;
     `"Assets:Epargne"`/`"EUR"` hardcodés vs options du ledger.

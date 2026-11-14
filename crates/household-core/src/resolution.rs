@@ -228,11 +228,13 @@ mod tests {
 
     /// Fichier temporaire pour les tests d'existence (nettoyé en fin de test).
     fn temporaire(nom: &str) -> PathBuf {
-        let chemin = std::env::temp_dir().join(format!(
-            "rpa-resolution-{nom}-{}-{:?}",
-            std::process::id(),
-            std::time::SystemTime::now()
-        ));
+        // Compteur atomique : les tests tournent en parallèle dans le même
+        // processus et l'horloge murale (résolution ~µs sur macOS) ne suffit
+        // pas à distinguer deux appels simultanés.
+        static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let seq = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let chemin =
+            std::env::temp_dir().join(format!("rpa-resolution-{nom}-{}-{seq}", std::process::id()));
         std::fs::write(&chemin, "").expect("écriture du fichier test");
         chemin
     }

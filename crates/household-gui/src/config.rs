@@ -12,7 +12,6 @@ use std::collections::BTreeMap;
 use std::fs::{self, File};
 use std::io::Write as _;
 use std::path::PathBuf;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 
@@ -138,16 +137,18 @@ impl Config {
         // Écriture atomique : fichier temporaire caché + sync_all + rename,
         // afin qu'un crash ou une coupure ne laisse jamais un TOML tronqué
         // (et donc des préférences écrasées sans trace).
+        // Compteur atomique : plusieurs écritures de config dans le même
+        // processus ne doivent pas colliser sur le même nom temporaire.
+        let tmp_suffix = {
+            static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+            SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        };
         let tmp = chemin.with_file_name(format!(
-            ".{}.tmp-{}",
+            ".{}.tmp-{tmp_suffix}",
             chemin
                 .file_name()
                 .and_then(|n| n.to_str())
                 .unwrap_or("config"),
-            SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .map(|d| d.as_nanos())
-                .unwrap_or_default()
         ));
         {
             let mut file = File::create(&tmp)
@@ -185,11 +186,12 @@ mod tests {
     use super::*;
 
     fn chemin_temporaire(nom: &str) -> PathBuf {
-        std::env::temp_dir().join(format!(
-            "rpa-config-{nom}-{}-{:?}.toml",
-            std::process::id(),
-            std::time::SystemTime::now()
-        ))
+        // Compteur atomique : les tests tournent en parallèle dans le même
+        // processus et l'horloge murale (résolution ~µs sur macOS) ne suffit
+        // pas à distinguer deux appels simultanés.
+        static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let seq = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        std::env::temp_dir().join(format!("rpa-config-{nom}-{seq}.toml"))
     }
 
     #[test]
