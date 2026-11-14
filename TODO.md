@@ -366,10 +366,12 @@ Ordre de priorité proposé :
   repoussé à 120 s). Ajout d'un petit guard `LedgerLock` avec `Drop` qui
   supprime le fichier de verrou à la fin de la section critique, y compris en
   cas de panic. Test de régression `verrou_nettoye_apres_panic` ajouté.
-- [ ] **#8 — Préférences non atomiques** (`household-gui/config.rs`) : écriture
-  directe (pas de tmp+rename) et TOML corrompu → défauts silencieux puis
-  réécriture (préférences écrasées sans trace). Réutiliser une écriture
-  atomique + un diagnostic au démarrage.
+- [x] **#8 — Préférences non atomiques** (`household-gui/config.rs`) : l'écriture
+  directe (`std::fs::write`) est remplacée par une écriture atomique
+  (temporaire caché + `sync_all` + `rename`), de sorte qu'un crash ne laisse
+  jamais un TOML tronqué / des préférences écrasées sans trace. Diagnostic au
+  démarrage quand le TOML est corrompu (eprintln + valeurs par défaut,
+  l'interface démarre toujours).
 - [ ] **#10 — Courbe du patrimoine O(mois × transactions)** (`viewmodel.rs`) :
   `courbe_patrimoine` relance un `balances_at` complet par point (rejeu du
   booking sur TOUT le ledger à chaque mois). Une seule passe incrémentale

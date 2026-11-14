@@ -9,7 +9,10 @@
 //! jamais supprimé automatiquement.
 
 use std::collections::BTreeMap;
+use std::fs::{self, File};
+use std::io::Write as _;
 use std::path::PathBuf;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 
@@ -95,7 +98,18 @@ impl Config {
             return Self::default();
         };
         let mut config = match std::fs::read_to_string(chemin) {
-            Ok(texte) => toml::from_str(&texte).unwrap_or_default(),
+            Ok(texte) => match toml::from_str(&texte) {
+                Ok(config) => config,
+                Err(e) => {
+                    // TOML corrompu : défauts silencieux évités — un diagnostic
+                    // est émis au démarrage (l'UI peut l'afficher en flash/bannière).
+                    eprintln!(
+                        "⚠ préférences illisibles ({}) : {e} — valeurs par défaut utilisées",
+                        chemin.display()
+                    );
+                    Self::default()
+                }
+            },
             Err(_) => Self::default(),
         };
         config.chemin_charge = Some(chemin.to_path_buf());
@@ -121,7 +135,35 @@ impl Config {
             std::fs::create_dir_all(parent)
                 .map_err(|e| format!("création de {} : {e}", parent.display()))?;
         }
-        std::fs::write(chemin, texte).map_err(|e| format!("écriture de {} : {e}", chemin.display()))
+        // Écriture atomique : fichier temporaire caché + sync_all + rename,
+        // afin qu'un crash ou une coupure ne laisse jamais un TOML tronqué
+        // (et donc des préférences écrasées sans trace).
+        let tmp = chemin.with_file_name(format!(
+            ".{}.tmp-{}",
+            chemin
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("config"),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or_default()
+        ));
+        {
+            let mut file = File::create(&tmp)
+                .map_err(|e| format!("création temporaire {} : {e}", tmp.display()))?;
+            file.write_all(texte.as_bytes())
+                .map_err(|e| format!("écriture temporaire {} : {e}", tmp.display()))?;
+            file.sync_all()
+                .map_err(|e| format!("synchronisation {} : {e}", tmp.display()))?;
+        }
+        fs::rename(&tmp, chemin).map_err(|e| {
+            format!(
+                "renommage de {} vers {} : {e}",
+                tmp.display(),
+                chemin.display()
+            )
+        })
     }
 
     /// Bascule le rollover d'une famille et persiste.
