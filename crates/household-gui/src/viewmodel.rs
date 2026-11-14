@@ -438,7 +438,7 @@ pub fn rapports(directives: &[Directive], types: &AccountTypes, annee: i16) -> R
         annee,
         ..RapportsData::default()
     };
-    let epargne_prefixe = "Assets:Epargne";
+    let epargne_prefixe = format!("{}:Epargne", types.assets);
 
     for directive in directives {
         let Directive::Transaction(t) = directive else {
@@ -463,7 +463,7 @@ pub fn rapports(directives: &[Directive], types: &AccountTypes, annee: i16) -> R
                 out.depenses_categories.entry(cat).or_default()[mois_zero] += montant;
             } else if compte.starts_with(&types.income) {
                 out.revenus_mois[mois_zero] += a.number.abs();
-            } else if compte.starts_with(epargne_prefixe) {
+            } else if compte.starts_with(epargne_prefixe.as_str()) {
                 // Variation nette (signée) : + transfert/intérêts, − retrait.
                 out.epargne_mois[mois_zero] += a.number;
             }
