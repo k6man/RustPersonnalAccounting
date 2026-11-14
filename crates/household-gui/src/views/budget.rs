@@ -1,9 +1,9 @@
-//! Écran Budget (stub TUI — à implémenter).
+//! Écran Budget (TUI).
 
 use ratatui::{
     Frame,
     style::{Color, Style},
-    widgets::{Block, Borders, Paragraph},
+    widgets::{Block, Borders, List, ListItem, Paragraph},
 };
 
 use household_budget::BudgetGrid;
@@ -47,7 +47,7 @@ impl UiState {
 
 /// Dessine l'écran budget.
 pub fn afficher(
-    _f: &mut Frame,
+    f: &mut Frame,
     _grille: Option<&BudgetGrid>,
     _etat: &mut UiState,
     _rollover_actif: &dyn Fn(&str) -> bool,
@@ -56,6 +56,6 @@ pub fn afficher(
     let texte = Paragraph::new("Budget — à implémenter en ratatui")
         .block(block)
         .style(Style::default().fg(Color::White));
-    _f.render_widget(texte, _f.size());
+    f.render_widget(texte, f.size());
     None
 }
