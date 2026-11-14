@@ -56,7 +56,7 @@ pub fn append_transaction(snapshot: &Snapshot, txn: &Transaction) -> Result<Snap
     let main = snapshot.main.clone();
     let target = monthly_file(&main, txn.date);
     mutate(&main, target, |old| {
-        Ok(Some(insert_block(old, txn, ioutil_header(txn.date))))
+        Ok(Some(insert_block(old, txn, entete_mensuel(txn.date))))
     })
 }
 
@@ -79,26 +79,23 @@ pub fn replace_transaction(
         // Remplacement sur place : même span, même fichier. Le corps de
         // l'ancien bloc est remplacé (salé), pas concaténé.
         let main = snapshot.main.clone();
-        let (file_id, span) = snapshot.span_of(index)?;
+        let (_, span) = snapshot.span_of(index)?;
         let source = snapshot.source_of(index)?;
         let target = source.file;
         let block = canonical_block(new_txn);
         mutate(&main, target, |old_text| {
-            Ok(Some(rewrite_span(
-                old_text,
-                file_id,
-                span,
-                |_, _old, after| format!("{block}\n{after}"),
-            )))
+            Ok(Some(rewrite_span(old_text, span, |_, _old, after| {
+                format!("{block}\n{after}")
+            })))
         })
     } else {
         // Changement de date : l'ordre de tri doit être rétabli.
         let main = snapshot.main.clone();
-        let (file_id, span) = snapshot.span_of(index)?;
+        let (_, span) = snapshot.span_of(index)?;
         let source = snapshot.source_of(index)?;
         let bloc_nouveau = canonical_block(new_txn);
         let iso = new_txn.date.to_string();
-        let header = ioutil_header(new_txn.date);
+        let header = entete_mensuel(new_txn.date);
         let cible_ancienne = source.file;
         let cible_nouvelle = monthly_file(&main, new_txn.date);
 
@@ -111,7 +108,7 @@ pub fn replace_transaction(
             // Changement de jour dans le même mois : un seul patch composé
             // (retrait du bloc puis insertion à la nouvelle place).
             mutate(&main, cible_ancienne, move |old_text| {
-                let retire = rewrite_span(old_text, file_id, span, |_, _, after| after.to_string());
+                let retire = rewrite_span(old_text, span, |_, _, after| after.to_string());
                 Ok(Some(insert_sorted(
                     &retire,
                     &bloc_nouveau,
@@ -127,12 +124,9 @@ pub fn replace_transaction(
                 &main,
                 vec![
                     FileChange::new(cible_ancienne, move |old_text| {
-                        Ok(Some(rewrite_span(
-                            old_text,
-                            file_id,
-                            span,
-                            |_, _, after| after.to_string(),
-                        )))
+                        Ok(Some(rewrite_span(old_text, span, |_, _, after| {
+                            after.to_string()
+                        })))
                     }),
                     FileChange::new(cible_nouvelle, move |old_text| {
                         Ok(Some(insert_sorted(
@@ -152,16 +146,13 @@ pub fn replace_transaction(
 /// lignes vides en excès normalisées).
 pub fn remove_transaction(snapshot: &Snapshot, index: usize) -> Result<Snapshot, CoreError> {
     let main = snapshot.main.clone();
-    let (file_id, span) = snapshot.span_of(index)?;
+    let (_, span) = snapshot.span_of(index)?;
     let source = snapshot.source_of(index)?;
     let target = source.file;
     mutate(&main, target, |old_text| {
-        Ok(Some(rewrite_span(
-            old_text,
-            file_id,
-            span,
-            |_, _, after| after.to_string(),
-        )))
+        Ok(Some(rewrite_span(old_text, span, |_, _, after| {
+            after.to_string()
+        })))
     })
 }
 
@@ -198,7 +189,7 @@ pub fn rewrite_span_block(
     span: rustledger_parser::Span,
     f: impl FnOnce(usize, &str, &str) -> String,
 ) -> String {
-    rewrite_span(old, 0, span, f)
+    rewrite_span(old, span, f)
 }
 
 /// Insère `block` (texte déjà canonique) dans `old` avant la première ligne
@@ -236,7 +227,7 @@ fn write_config() -> FormatConfig {
 }
 
 /// Texte d'en-tête d'un fichier mensuel non encore créé.
-fn ioutil_header(date: NaiveDate) -> String {
+fn entete_mensuel(date: NaiveDate) -> String {
     let iso = date.to_string();
     let month = &iso[..7];
     format!("# Transactions {month} — créé automatiquement. Un bloc = une transaction.\n")
@@ -348,7 +339,6 @@ pub fn split_directive_block(old: &str, span: rustledger_parser::Span) -> (usize
 /// `corps + suite` ; le texte **avant** le bloc est conservé tel quel.
 fn rewrite_span(
     old: &str,
-    _file_id: usize,
     span: rustledger_parser::Span,
     f: impl FnOnce(usize, &str, &str) -> String,
 ) -> String {
