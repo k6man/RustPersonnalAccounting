@@ -497,35 +497,37 @@ impl App {
     }
 
     fn dessine_barre_ecrans(&self, f: &mut Frame, area: ratatui::layout::Rect) {
-        let items: Vec<ListItem> = Onglet::TOUS
+        let largeurs: Vec<Constraint> = Onglet::TOUS
             .iter()
-            .enumerate()
-            .map(|(i, onglet)| {
-                let style = if i == self.ecran_actif {
-                    Style::default()
-                        .fg(Color::Black)
-                        .bg(Color::White)
-                        .add_modifier(Modifier::BOLD)
-                } else {
-                    Style::default().fg(Color::White)
-                };
-                ListItem::new(format!(
-                    " {ctrl} {nom}",
-                    ctrl = i + 1,
-                    nom = onglet.libelle()
-                ))
-                .style(style)
-            })
+            .map(|_| Constraint::Length(18))
             .collect();
+        let chunks = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints(largeurs)
+            .split(area);
 
-        let list = List::new(items)
+        for (i, onglet) in Onglet::TOUS.iter().enumerate() {
+            let style = if i == self.ecran_actif {
+                Style::default()
+                    .fg(Color::Black)
+                    .bg(Color::White)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(Color::White)
+            };
+            let item = Paragraph::new(format!(
+                " {ctrl} {nom}",
+                ctrl = i + 1,
+                nom = onglet.libelle()
+            ))
+            .style(style)
             .block(
                 Block::default()
                     .borders(Borders::ALL)
-                    .title(" Écrans (Ctrl+1..7) "),
-            )
-            .style(Style::default().fg(Color::Gray));
-        f.render_widget(list, area);
+                    .border_type(ratatui::widgets::BorderType::Rounded),
+            );
+            f.render_widget(item, chunks[i]);
+        }
     }
 
     fn dessine_flash(&self, f: &mut Frame, area: ratatui::layout::Rect) {
