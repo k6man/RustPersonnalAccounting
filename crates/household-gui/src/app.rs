@@ -190,8 +190,10 @@ impl App {
                 self.saisie_en_vol = false;
             }
             LoadOutcome::Git { donnees, message } => {
-                self.git_donnees = Some(donnees);
+                self.git_donnees = Some(donnees.clone());
                 self.en_chargement = false;
+                // Pré-remplir le message de commit avec la suggestion.
+                self.git.set_message_suggere(&donnees.message_suggere);
                 if let Some((texte, est_erreur)) = message {
                     self.flash = Some((texte, est_erreur));
                 }
@@ -303,6 +305,26 @@ impl App {
                     self.graphiques.bascule_repartition();
                 }
                 crate::views::graphiques::ActionGraphiques::Aucun => {}
+            }
+        }
+
+        // Délégation vers la vue Git pour les touches (flèches, 1/2/3, t,
+        // Entrée pour commiter, r pour actualiser).
+        if self.ecran_actif == Onglet::Git.index()
+            && let Some(action) = crate::views::git::on_key(key, &mut self.git)
+        {
+            match action {
+                crate::views::git::ActionGit::Actualiser => {
+                    self.en_chargement = true;
+                    self.flash = None;
+                    self.cmd_tx.send(Command::GitStatut).ok();
+                }
+                crate::views::git::ActionGit::Commit(message) => {
+                    self.en_chargement = true;
+                    self.flash = None;
+                    self.cmd_tx.send(Command::GitCommit { message }).ok();
+                }
+                crate::views::git::ActionGit::Aucun => {}
             }
         }
 
