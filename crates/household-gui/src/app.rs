@@ -434,7 +434,7 @@ impl App {
     fn dessine_contenu(&mut self, f: &mut Frame, area: ratatui::layout::Rect) {
         let chunks = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([Constraint::Length(1), Constraint::Min(0)])
+            .constraints([Constraint::Length(3), Constraint::Min(0)])
             .split(area);
 
         self.dessine_barre_ecrans(f, chunks[0]);
