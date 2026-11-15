@@ -289,6 +289,23 @@ impl App {
             }
         }
 
+        // Délégation vers la vue Graphiques pour les touches de navigation
+        // entre mini-onglets (flèches gauche/droite, 1/2/3, t pour basculer
+        // année/mois).
+        if self.ecran_actif == Onglet::Graphiques.index()
+            && let Some(action) = crate::views::graphiques::on_key(key, &mut self.graphiques)
+        {
+            match action {
+                crate::views::graphiques::ActionGraphiques::ChangerOnglet(n) => {
+                    self.graphiques.onglet = n;
+                }
+                crate::views::graphiques::ActionGraphiques::BasculeRepartition => {
+                    self.graphiques.bascule_repartition();
+                }
+                crate::views::graphiques::ActionGraphiques::Aucun => {}
+            }
+        }
+
         false
     }
 
