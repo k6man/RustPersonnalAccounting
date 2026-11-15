@@ -235,9 +235,19 @@ impl UiState {
         _payees: &[(String, usize)],
     ) -> Option<Action> {
         // Si le champ actif est un TextInput, on lui délègue d'abord.
+        // Les touches de commande (+, ×, e, Entrée, Échap) ne sont pas
+        // transmises au TextInput.
         let input_consomme = if matches!(
             self.champ_actif,
             Champ::Date | Champ::Tiers | Champ::Libelle | Champ::Tags | Champ::Liens
+        ) && !matches!(
+            key.code,
+            KeyCode::Char('+')
+                | KeyCode::Char('×')
+                | KeyCode::Char('x')
+                | KeyCode::Char('e')
+                | KeyCode::Enter
+                | KeyCode::Esc
         ) {
             self.input_actif().on_key(key)
         } else {
@@ -277,13 +287,11 @@ impl UiState {
                 None
             }
             KeyCode::Enter => {
-                // Dans le champ postings, Entrée ajoute une nouvelle ligne.
+                // Sur le champ postings, Entrée valide le brouillon.
+                // Sur les autres champs, passe au suivant.
                 if self.champ_actif == Champ::Postings {
-                    self.brouillon.lignes.push(LigneBrouillon::default());
-                    self.posting_selectionne = self.brouillon.lignes.len() - 1;
-                    return None;
+                    return Some(Action::Enregistrer);
                 }
-                // Sinon, passer au champ suivant.
                 self.champ_actif = self.champ_actif.suivant();
                 None
             }

@@ -91,12 +91,12 @@ impl TextInput {
     /// Supprime le caractère avant le curseur.
     pub fn delete_backward(&mut self) {
         if self.cursor > 0 {
-            // Trouver le début du caractère précédent (UTF-8).
+            // Trouver le début du caractère UTF-8 contenant l'octet avant le curseur.
             let byte_before = self.cursor - 1;
-            let start = self.value[..byte_before]
-                .char_indices()
-                .next_back()
-                .map_or(0, |(i, _)| i);
+            let mut start = byte_before;
+            while start > 0 && !self.value.is_char_boundary(start) {
+                start -= 1;
+            }
             self.value.remove(start);
             self.cursor = start;
         }

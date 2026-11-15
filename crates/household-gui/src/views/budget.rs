@@ -249,6 +249,9 @@ pub fn on_key(
         }
         KeyCode::Char('e') => {
             let grille = grille?;
+            if grille.rows.is_empty() {
+                return None;
+            }
             let ligne_idx = etat.ligne_index(Some(grille));
             let ligne = &grille.rows[ligne_idx];
             let mois = etat.mois_selectionne;
