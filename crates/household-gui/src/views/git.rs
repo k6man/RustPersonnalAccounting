@@ -8,11 +8,12 @@
 use crossterm::event::KeyEvent;
 use ratatui::{
     Frame,
-    layout::{Constraint, Direction, Layout},
+    layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     widgets::{Block, Borders, Paragraph, Row, Table},
 };
 
+use crate::app::ActionClique;
 use crate::widgets::text_input::TextInput;
 use crate::worker::GitDonnees;
 
@@ -82,7 +83,12 @@ impl UiState {
 }
 
 /// Dessine l'écran git.
-pub fn afficher(f: &mut Frame, git: &GitDonnees, etat: &mut UiState) -> Option<ActionGit> {
+pub fn afficher(
+    f: &mut Frame,
+    git: &GitDonnees,
+    etat: &mut UiState,
+    zones_cliquables: &mut Vec<(Rect, ActionClique)>,
+) -> Option<ActionGit> {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -182,6 +188,18 @@ pub fn afficher(f: &mut Frame, git: &GitDonnees, etat: &mut UiState) -> Option<A
         )
         .column_spacing(1);
         f.render_widget(tableau, chunks[3]);
+
+        // Enregistrer les zones cliquables des lignes de l'historique.
+        for (i, _commit) in git.historique.iter().enumerate().take(15) {
+            let ligne_y = chunks[3].top() + 1 + i as u16;
+            if ligne_y >= chunks[3].bottom() {
+                break;
+            }
+            zones_cliquables.push((
+                Rect::new(chunks[3].left() + 1, ligne_y, chunks[3].width - 2, 1),
+                ActionClique::GraphiquesOnglet(i),
+            ));
+        }
     } else if git.disponible {
         let vide = Paragraph::new("Aucun commit dans l'historique du ledger.")
             .block(Block::default().borders(Borders::ALL).title(" Historique "))

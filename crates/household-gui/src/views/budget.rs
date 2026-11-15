@@ -7,16 +7,16 @@
 use crossterm::event::KeyEvent;
 use ratatui::{
     Frame,
-    layout::{Constraint, Direction, Layout},
+    layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     widgets::{Block, Borders, Paragraph, Row, Table},
 };
 
+use crate::app::ActionClique;
+use crate::fmt::eur;
 use household_budget::BudgetGrid;
 use rust_decimal::Decimal;
 use rustledger_core::NaiveDate;
-
-use crate::fmt::eur;
 
 /// Action utilisateur retournée par l'écran budget.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -46,7 +46,7 @@ pub enum ActionBudget {
 pub struct UiState {
     pub annee: i16,
     /// Ligne sélectionnée dans la grille.
-    pub ligne_selectionnee: usize,
+    pub ligne_selectionne: usize,
     /// Mois sélectionné (0..=11).
     pub mois_selectionne: usize,
     /// Posting sélectionné dans la ligne.
@@ -57,7 +57,7 @@ impl UiState {
     pub fn nouveau(annee: i16) -> Self {
         Self {
             annee,
-            ligne_selectionnee: 0,
+            ligne_selectionne: 0,
             mois_selectionne: 0,
             posting_selectionne: 0,
         }
@@ -74,7 +74,7 @@ impl UiState {
         if nb == 0 {
             return 0;
         }
-        self.ligne_selectionnee.min(nb - 1)
+        self.ligne_selectionne.min(nb - 1)
     }
 
     /// Passe à la ligne suivante.
@@ -83,13 +83,13 @@ impl UiState {
         if nb == 0 {
             return;
         }
-        self.ligne_selectionnee = (self.ligne_selectionnee + 1).min(nb - 1);
+        self.ligne_selectionne = (self.ligne_selectionne + 1).min(nb - 1);
     }
 
     /// Passe à la ligne précédente.
     pub fn ligne_precedente(&mut self) {
-        if self.ligne_selectionnee > 0 {
-            self.ligne_selectionnee -= 1;
+        if self.ligne_selectionne > 0 {
+            self.ligne_selectionne -= 1;
         }
     }
 
@@ -112,6 +112,7 @@ pub fn afficher(
     grille: Option<&BudgetGrid>,
     etat: &mut UiState,
     _rollover_actif: &dyn Fn(&str) -> bool,
+    zones_cliquables: &mut Vec<(Rect, ActionClique)>,
 ) -> Option<ActionBudget> {
     let grille = grille?;
 
@@ -217,8 +218,27 @@ pub fn afficher(
 
     f.render_widget(tableau, chunks[2]);
 
-    // Afficher la cellule sélectionnée en bas (pas de widget séparé, juste dans le titre)
-    let _ = mois_idx;
+    // Enregistrer les zones cliquables des cellules budgétaires.
+    for (i, ligne) in grille.rows.iter().enumerate() {
+        let ligne_y = chunks[2].top() + 1 + i as u16;
+        if ligne_y >= chunks[2].bottom() {
+            break;
+        }
+        zones_cliquables.push((
+            Rect::new(chunks[2].left() + 1, ligne_y, chunks[2].width - 2, 1),
+            ActionClique::BudgetCellule {
+                annee: etat.annee,
+                date: rustledger_core::NaiveDate::new(
+                    etat.annee,
+                    i8::try_from(etat.mois_selectionne + 1).unwrap_or(1),
+                    1,
+                )
+                .unwrap_or_default(),
+                compte: ligne.account.clone(),
+                montant: ligne.cells[etat.mois_selectionne].budgeted,
+            },
+        ));
+    }
 
     None
 }
@@ -308,7 +328,6 @@ pub fn on_mouse(
     }
 
     // Déterminer le mois cliqué en fonction de la colonne X.
-    // Les colonnes sont : Poste (28), puis 12 colonnes de 10, puis Total (10) et Écart (10).
     let x = mouse.column as usize;
     let mois_idx = if x < 28 {
         // Clic sur le poste, pas de mois spécifique
@@ -324,7 +343,7 @@ pub fn on_mouse(
     };
 
     etat.mois_selectionne = mois_idx;
-    etat.posting_selectionne = ligne_cliquee;
+    etat.ligne_selectionne = ligne_cliquee;
 
     let ligne = &grille.rows[ligne_cliquee];
     Some(ActionBudget::Cellule {

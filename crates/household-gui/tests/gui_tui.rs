@@ -251,7 +251,7 @@ fn journal_render_ne_panique_pas() {
     etat.set_selection(0);
 
     render_safe(buffer_rect(), |frame| {
-        journal::afficher(frame, &donnees.journal, &mut etat);
+        journal::afficher(frame, &donnees.journal, &mut etat, &mut Vec::new());
     });
 }
 
@@ -383,7 +383,13 @@ fn saisie_render_ne_panique_pas() {
     let mut etat = saisie::UiState::nouveau("2026-03-15".parse().unwrap());
 
     render_safe(buffer_rect(), |frame| {
-        saisie::afficher(frame, &mut etat, &donnees.comptes, &donnees.payees);
+        saisie::afficher(
+            frame,
+            &mut etat,
+            &donnees.comptes,
+            &donnees.payees,
+            &mut Vec::new(),
+        );
     });
 }
 
@@ -396,7 +402,7 @@ fn budget_affiche_sans_panique() {
 
     let _grille = Some(&donnees.grilles[&2026]);
     render_safe(buffer_rect(), |frame| {
-        budget::afficher(frame, _grille, &mut etat, &|_| false);
+        budget::afficher(frame, _grille, &mut etat, &|_| false, &mut Vec::new());
     });
 }
 
@@ -469,7 +475,7 @@ fn graphiques_render_ne_panique_pas() {
     let mut etat = graphiques::UiState::nouveau();
 
     render_safe(buffer_rect(), |frame| {
-        graphiques::afficher(frame, &_donnees, &mut etat);
+        graphiques::afficher(frame, &_donnees, &mut etat, &mut Vec::new());
     });
 }
 
@@ -514,6 +520,6 @@ fn git_render_ne_panique_pas() {
     let mut etat = git::UiState::nouveau();
 
     render_safe(buffer_rect(), |frame| {
-        git::afficher(frame, &git, &mut etat);
+        git::afficher(frame, &git, &mut etat, &mut Vec::new());
     });
 }

@@ -2,11 +2,12 @@
 
 use ratatui::{
     Frame,
-    layout::{Constraint, Direction, Layout},
+    layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     widgets::{Block, Borders, List, ListItem, Paragraph, Row, Table},
 };
 
+use crate::app::ActionClique;
 use crate::fmt::eur;
 use crate::viewmodel::{DashboardData, EtatJauge};
 
@@ -27,7 +28,11 @@ fn couleur_etat(etat: EtatJauge) -> Color {
 }
 
 /// Dessine le tableau de bord.
-pub fn afficher(f: &mut Frame, donnees: &DashboardData) -> Option<ActionDashboard> {
+pub fn afficher(
+    f: &mut Frame,
+    donnees: &DashboardData,
+    _zones_cliquables: &mut Vec<(Rect, ActionClique)>,
+) -> Option<ActionDashboard> {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([

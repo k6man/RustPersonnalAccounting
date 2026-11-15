@@ -2,11 +2,12 @@
 
 use ratatui::{
     Frame,
-    layout::{Constraint, Direction, Layout},
+    layout::{Constraint, Direction, Layout, Rect},
     style::{Modifier, Style},
     widgets::{Block, Borders, Paragraph, Row, Table, TableState},
 };
 
+use crate::app::ActionClique;
 use crate::fmt::eur;
 use crate::viewmodel::JournalData;
 
@@ -49,8 +50,13 @@ impl UiState {
     }
 }
 
-/// Dessine le journal.
-pub fn afficher(f: &mut Frame, donnees: &JournalData, etat: &mut UiState) -> Option<ActionJournal> {
+/// Dessine le journal et enregistre les zones cliquables des lignes.
+pub fn afficher(
+    f: &mut Frame,
+    donnees: &JournalData,
+    etat: &mut UiState,
+    zones_cliquables: &mut Vec<(Rect, ActionClique)>,
+) -> Option<ActionJournal> {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -137,6 +143,18 @@ pub fn afficher(f: &mut Frame, donnees: &JournalData, etat: &mut UiState) -> Opt
     .column_spacing(1);
 
     f.render_stateful_widget(tableau, chunks[1], &mut etat.table_state);
+
+    // Enregistrer les zones cliquables des lignes du tableau.
+    for (i, ligne) in donnees.lignes.iter().enumerate().take(50) {
+        let ligne_y = chunks[1].top() + 1 + i as u16; // +1 pour la bordure du tableau
+        if ligne_y >= chunks[1].bottom() {
+            break;
+        }
+        zones_cliquables.push((
+            Rect::new(chunks[1].left(), ligne_y, chunks[1].width, 1),
+            ActionClique::JournalLigne(ligne.index),
+        ));
+    }
 
     None
 }

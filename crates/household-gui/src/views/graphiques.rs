@@ -8,11 +8,12 @@
 use crossterm::event::KeyEvent;
 use ratatui::{
     Frame,
-    layout::{Constraint, Direction, Layout},
+    layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     widgets::{Block, Borders, List, ListItem, Paragraph, Row, Table},
 };
 
+use crate::app::ActionClique;
 use crate::fmt::eur;
 use crate::viewmodel::{GraphesData, UiData};
 
@@ -63,7 +64,12 @@ impl UiState {
 }
 
 /// Dessine l'écran graphiques.
-pub fn afficher(f: &mut Frame, donnees: &UiData, etat: &mut UiState) {
+pub fn afficher(
+    f: &mut Frame,
+    donnees: &UiData,
+    etat: &mut UiState,
+    zones_cliquables: &mut Vec<(Rect, ActionClique)>,
+) {
     let graphes = &donnees.graphiques;
 
     let chunks = Layout::default()
@@ -113,16 +119,36 @@ pub fn afficher(f: &mut Frame, donnees: &UiData, etat: &mut UiState) {
         .style(Style::default().fg(Color::Gray));
     f.render_widget(liste, chunks[0]);
 
+    // Enregistrer les zones cliquables des onglets graphiques.
+    let onglet_largeur = chunks[0].width as usize / onglets.len();
+    for (i, _) in onglets.iter().enumerate() {
+        zones_cliquables.push((
+            Rect::new(
+                chunks[0].left() + (i * onglet_largeur) as u16,
+                chunks[0].top(),
+                onglet_largeur as u16,
+                chunks[0].height,
+            ),
+            ActionClique::GraphiquesOnglet(i),
+        ));
+    }
+
     // Contenu selon l'onglet.
     match etat.onglet {
-        0 => afficher_repartition(f, graphes, etat),
-        1 => afficher_cascade(f, graphes),
-        _ => afficher_budget_vs_reel(f, donnees),
+        0 => afficher_repartition(f, graphes, etat, zones_cliquables, chunks[0]),
+        1 => afficher_cascade(f, graphes, zones_cliquables, chunks[0]),
+        _ => afficher_budget_vs_reel(f, donnees, zones_cliquables, chunks[0]),
     }
 }
 
 /// Répartition des dépenses (top 8 + Autres).
-fn afficher_repartition(f: &mut Frame, graphes: &GraphesData, etat: &UiState) {
+fn afficher_repartition(
+    f: &mut Frame,
+    graphes: &GraphesData,
+    etat: &UiState,
+    zones_cliquables: &mut Vec<(Rect, ActionClique)>,
+    area: Rect,
+) {
     let lignes = if etat.repartition_mois {
         &graphes.repartition_mois
     } else {
@@ -133,7 +159,8 @@ fn afficher_repartition(f: &mut Frame, graphes: &GraphesData, etat: &UiState) {
 
     let rows: Vec<Row> = lignes
         .iter()
-        .map(|(categorie, montant)| {
+        .enumerate()
+        .map(|(i, (categorie, montant))| {
             let pct = if !total.is_zero() {
                 (f64::try_from(*montant / total).unwrap_or(0.0) * 100.0) as u32
             } else {
@@ -145,6 +172,11 @@ fn afficher_repartition(f: &mut Frame, graphes: &GraphesData, etat: &UiState) {
                 format!("{pct}%"),
                 "█".repeat(pct as usize / 2),
             ])
+            .style(if i == etat.onglet {
+                Style::default().add_modifier(Modifier::REVERSED)
+            } else {
+                Style::default()
+            })
         })
         .collect();
 
@@ -171,10 +203,27 @@ fn afficher_repartition(f: &mut Frame, graphes: &GraphesData, etat: &UiState) {
     .column_spacing(1);
 
     f.render_widget(tableau, f.size());
+
+    // Enregistrer les zones cliquables des lignes de répartition.
+    for (i, (_categorie, _)) in lignes.iter().enumerate() {
+        let ligne_y = area.top() + 1 + i as u16;
+        if ligne_y >= area.bottom() {
+            break;
+        }
+        zones_cliquables.push((
+            Rect::new(area.left() + 1, ligne_y, area.width - 2, 1),
+            ActionClique::GraphiquesOnglet(i),
+        ));
+    }
 }
 
 /// Cascade annuelle (identité comptable).
-fn afficher_cascade(f: &mut Frame, graphes: &GraphesData) {
+fn afficher_cascade(
+    f: &mut Frame,
+    graphes: &GraphesData,
+    zones_cliquables: &mut Vec<(Rect, ActionClique)>,
+    area: Rect,
+) {
     let rows = vec![
         Row::new(vec![
             "Revenus".to_string(),
@@ -194,6 +243,7 @@ fn afficher_cascade(f: &mut Frame, graphes: &GraphesData) {
         ]),
     ];
 
+    let nb_rows = rows.len();
     let tableau = Table::new(rows, [Constraint::Length(20), Constraint::Length(15)])
         .header(
             Row::new(vec!["Poste", "Montant"]).style(Style::default().add_modifier(Modifier::BOLD)),
@@ -206,10 +256,27 @@ fn afficher_cascade(f: &mut Frame, graphes: &GraphesData) {
         .column_spacing(1);
 
     f.render_widget(tableau, f.size());
+
+    // Enregistrer les zones cliquables des lignes de cascade.
+    for i in 0..nb_rows {
+        let ligne_y = area.top() + 1 + i as u16;
+        if ligne_y >= area.bottom() {
+            break;
+        }
+        zones_cliquables.push((
+            Rect::new(area.left() + 1, ligne_y, area.width - 2, 1),
+            ActionClique::GraphiquesOnglet(i),
+        ));
+    }
 }
 
 /// Budget vs réel du mois (2 barres groupées).
-fn afficher_budget_vs_reel(f: &mut Frame, donnees: &UiData) {
+fn afficher_budget_vs_reel(
+    f: &mut Frame,
+    donnees: &UiData,
+    zones_cliquables: &mut Vec<(Rect, ActionClique)>,
+    area: Rect,
+) {
     let lignes = &donnees.tableau_de_bord.budget_mois;
     if lignes.is_empty() {
         let vide = Paragraph::new("Aucune donnée budgétaire pour ce mois.")
@@ -263,6 +330,19 @@ fn afficher_budget_vs_reel(f: &mut Frame, donnees: &UiData) {
     .column_spacing(1);
 
     f.render_widget(tableau, f.size());
+
+    // Enregistrer les zones cliquables des lignes de budget vs réel.
+    let ligne_y_debut = area.top() + 1;
+    for (i, _) in lignes.iter().enumerate() {
+        let ligne_y = ligne_y_debut + i as u16;
+        if ligne_y >= area.bottom() {
+            break;
+        }
+        zones_cliquables.push((
+            Rect::new(area.left() + 1, ligne_y, area.width - 2, 1),
+            ActionClique::GraphiquesOnglet(i),
+        ));
+    }
 }
 
 /// Gère un événement clavier pour le graphiques.

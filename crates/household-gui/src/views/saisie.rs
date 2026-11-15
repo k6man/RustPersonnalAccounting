@@ -8,11 +8,12 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::{
     Frame,
-    layout::{Constraint, Direction, Layout},
+    layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     widgets::{Block, Borders, List, ListItem, Paragraph, Row, Table},
 };
 
+use crate::app::ActionClique;
 use crate::fmt::eur;
 use crate::saisie::{Brouillon, Empreinte, LigneBrouillon};
 use crate::viewmodel::{InfoCompte, LigneJournal};
@@ -332,6 +333,7 @@ pub fn afficher(
     etat: &mut UiState,
     _comptes: &[InfoCompte],
     _payees: &[(String, usize)],
+    zones_cliquables: &mut Vec<(Rect, ActionClique)>,
 ) -> Option<Action> {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -416,6 +418,20 @@ pub fn afficher(
     )
     .column_spacing(1);
     f.render_widget(tableau, chunks[2]);
+
+    // Enregistrer les zones cliquables des lignes de postings.
+    for (i, ligne) in etat.brouillon.lignes.iter().enumerate() {
+        if !ligne.compte.is_empty() {
+            let ligne_y = chunks[2].top() + 1 + i as u16; // +1 pour la bordure du tableau
+            if ligne_y >= chunks[2].bottom() {
+                break;
+            }
+            zones_cliquables.push((
+                Rect::new(chunks[2].left() + 4, ligne_y, chunks[2].width - 8, 1),
+                ActionClique::SaisieNouveau,
+            ));
+        }
+    }
 
     // 4. Équilibrage.
     let total_eur: rust_decimal::Decimal = b

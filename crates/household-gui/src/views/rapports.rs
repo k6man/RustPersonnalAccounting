@@ -2,16 +2,21 @@
 
 use ratatui::{
     Frame,
-    layout::{Constraint, Direction, Layout},
+    layout::{Constraint, Direction, Layout, Rect},
     style::{Modifier, Style},
     widgets::{Block, Borders, List, ListItem, Row, Table},
 };
 
+use crate::app::ActionClique;
 use crate::fmt::eur;
 use crate::viewmodel::RapportsData;
 
 /// Dessine l'écran rapports.
-pub fn afficher(f: &mut Frame, donnees: &RapportsData) {
+pub fn afficher(
+    f: &mut Frame,
+    donnees: &RapportsData,
+    _zones_cliquables: &mut Vec<(Rect, ActionClique)>,
+) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
