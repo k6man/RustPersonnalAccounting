@@ -5,7 +5,7 @@ use std::sync::Arc;
 use std::sync::mpsc::{Receiver, Sender};
 use std::time::Duration;
 
-use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent};
 use ratatui::{
     Frame, Terminal,
     backend::Backend,
@@ -155,11 +155,18 @@ impl App {
                 self.traiter_outcome(outcome);
             }
 
-            if event::poll(Duration::from_millis(100)).map_err(|e| e.to_string())?
-                && let Event::Key(key) = event::read().map_err(|e| e.to_string())?
-                && self.on_key(key)
-            {
-                break Ok(());
+            if event::poll(Duration::from_millis(100)).map_err(|e| e.to_string())? {
+                match event::read().map_err(|e| e.to_string())? {
+                    Event::Key(key) => {
+                        if self.on_key(key) {
+                            break Ok(());
+                        }
+                    }
+                    Event::Mouse(mouse) => {
+                        self.on_mouse(mouse);
+                    }
+                    _ => {}
+                }
             }
         }
     }
@@ -329,6 +336,188 @@ impl App {
         }
 
         false
+    }
+
+    fn on_mouse(&mut self, mouse: MouseEvent) -> bool {
+        use crossterm::event::MouseEventKind;
+
+        if let MouseEventKind::Down(MouseButton::Left) = mouse.kind {
+            let _x = mouse.column as usize;
+            let y = mouse.row as usize;
+
+            // Clic sur la barre d'onglets (ligne 0 de la barre d'écrans).
+            if y == 0 {
+                // On ne connaît pas la largeur exacte du terminal ici ;
+                // le clic sur les onglets via la souris n'est pas géré
+                // pour l'instant. Utilisez Ctrl+1..7.
+                return false;
+            }
+
+            // Délégation vers la vue active.
+            if let Some(donnees) = &self.donnees {
+                match Onglet::TOUS[self.ecran_actif] {
+                    Onglet::Journal => {
+                        if let Some(action) = crate::views::journal::on_mouse(
+                            mouse,
+                            &mut self.journal,
+                            donnees.journal.lignes.len(),
+                        ) {
+                            self.traiter_action_journal(action);
+                        }
+                    }
+                    Onglet::Saisie => {
+                        if let Some(action) =
+                            crate::views::saisie::on_mouse(mouse, &mut self.saisie)
+                        {
+                            self.traiter_action_saisie(action);
+                        }
+                    }
+                    Onglet::Budget => {
+                        let annee = self.budget.annee;
+                        if let Some(action) = crate::views::budget::on_mouse(
+                            mouse,
+                            &mut self.budget,
+                            donnees.grilles.get(&annee),
+                        ) {
+                            self.traiter_action_budget(action);
+                        }
+                    }
+                    Onglet::Graphiques => {
+                        if let Some(action) =
+                            crate::views::graphiques::on_mouse(mouse, &mut self.graphiques)
+                        {
+                            self.traiter_action_graphiques(action);
+                        }
+                    }
+                    Onglet::Git => {
+                        if let Some(action) = crate::views::git::on_mouse(mouse, &mut self.git) {
+                            self.traiter_action_git(action);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        false
+    }
+
+    fn traiter_action_journal(&mut self, action: crate::views::journal::ActionJournal) {
+        match action {
+            crate::views::journal::ActionJournal::Modifier(index) => {
+                let donnees = self.donnees.as_ref();
+                if let Some(ligne) = donnees
+                    .and_then(|d| d.journal.lignes.iter().find(|l| l.index == index).cloned())
+                {
+                    self.saisie = crate::views::saisie::UiState::modification(&ligne);
+                    self.ecran_actif = Onglet::Saisie.index();
+                }
+            }
+            crate::views::journal::ActionJournal::Supprimer(index) => {
+                self.demander_suppression(index);
+            }
+            crate::views::journal::ActionJournal::Aucun => {}
+        }
+    }
+
+    fn traiter_action_saisie(&mut self, action: crate::views::saisie::Action) {
+        match action {
+            crate::views::saisie::Action::Enregistrer => {
+                self.envoyer_brouillon();
+            }
+            crate::views::saisie::Action::Annuler => {
+                self.saisie = crate::views::saisie::UiState::nouveau(crate::worker::aujourd_hui());
+                self.saisie_en_vol = false;
+                self.ecran_actif = Onglet::Journal.index();
+            }
+            crate::views::saisie::Action::Aucun => {}
+        }
+    }
+
+    fn traiter_action_budget(&mut self, action: crate::views::budget::ActionBudget) {
+        match action {
+            crate::views::budget::ActionBudget::Cellule {
+                annee,
+                date,
+                compte,
+                montant,
+            } => {
+                self.en_chargement = true;
+                self.flash = None;
+                self.cmd_tx
+                    .send(Command::CelluleBudget {
+                        annee,
+                        date,
+                        compte,
+                        montant,
+                    })
+                    .ok();
+            }
+            crate::views::budget::ActionBudget::GenererAnnee {
+                source,
+                cible,
+                pourcent,
+                pas,
+            } => {
+                self.en_chargement = true;
+                self.flash = None;
+                self.cmd_tx
+                    .send(Command::GenererAnnee {
+                        source,
+                        cible,
+                        pourcent,
+                        pas,
+                    })
+                    .ok();
+            }
+            crate::views::budget::ActionBudget::BasculerRollover(famille) => {
+                match self.config.basculer_rollover(&famille) {
+                    Ok(()) => {
+                        self.flash = Some((
+                            format!(
+                                "rollover {} — préférence enregistrée",
+                                if self.config.rollover_actif(&famille) {
+                                    "activé"
+                                } else {
+                                    "désactivé"
+                                }
+                            ),
+                            false,
+                        ));
+                    }
+                    Err(e) => self.flash = Some((e, true)),
+                }
+            }
+            crate::views::budget::ActionBudget::Aucun => {}
+        }
+    }
+
+    fn traiter_action_graphiques(&mut self, action: crate::views::graphiques::ActionGraphiques) {
+        match action {
+            crate::views::graphiques::ActionGraphiques::ChangerOnglet(n) => {
+                self.graphiques.onglet = n;
+            }
+            crate::views::graphiques::ActionGraphiques::BasculeRepartition => {
+                self.graphiques.bascule_repartition();
+            }
+            crate::views::graphiques::ActionGraphiques::Aucun => {}
+        }
+    }
+
+    fn traiter_action_git(&mut self, action: crate::views::git::ActionGit) {
+        match action {
+            crate::views::git::ActionGit::Actualiser => {
+                self.en_chargement = true;
+                self.flash = None;
+                self.cmd_tx.send(Command::GitStatut).ok();
+            }
+            crate::views::git::ActionGit::Commit(message) => {
+                self.en_chargement = true;
+                self.flash = None;
+                self.cmd_tx.send(Command::GitCommit { message }).ok();
+            }
+            crate::views::git::ActionGit::Aucun => {}
+        }
     }
 
     fn demander_rechargement(&mut self) {

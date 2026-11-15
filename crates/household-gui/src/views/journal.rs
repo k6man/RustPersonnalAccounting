@@ -184,3 +184,31 @@ pub fn on_key(
         _ => None,
     }
 }
+
+/// Gère un événement souris pour le journal.
+///
+/// Retourne une `ActionJournal` si l'utilisateur a cliqué sur une ligne.
+pub fn on_mouse(
+    mouse: crossterm::event::MouseEvent,
+    _etat: &mut UiState,
+    nb_lignes: usize,
+) -> Option<ActionJournal> {
+    use crossterm::event::MouseEventKind;
+
+    if mouse.kind != MouseEventKind::Down(crossterm::event::MouseButton::Left) {
+        return None;
+    }
+
+    // Le tableau commence après le panneau info (3 lignes) et sa bordure.
+    // Approximation : la première ligne de données est à y = 4.
+    if mouse.row < 4 {
+        return None;
+    }
+
+    let ligne_cliquee = (mouse.row as usize) - 4;
+    if ligne_cliquee < nb_lignes {
+        Some(ActionJournal::Modifier(ligne_cliquee))
+    } else {
+        None
+    }
+}

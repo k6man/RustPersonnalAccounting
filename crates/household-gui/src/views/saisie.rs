@@ -443,3 +443,31 @@ pub fn afficher(
 
     None
 }
+
+/// Gère un événement souris pour l'écran saisie.
+///
+/// Retourne une `Action` si l'utilisateur a cliqué sur un élément
+/// interactif (ligne de posting), `None` sinon.
+pub fn on_mouse(mouse: crossterm::event::MouseEvent, etat: &mut UiState) -> Option<Action> {
+    use crossterm::event::MouseEventKind;
+
+    if mouse.kind != MouseEventKind::Down(crossterm::event::MouseButton::Left) {
+        return None;
+    }
+
+    // Les lignes de postings commencent après l'en-tête (7 lignes) et les
+    // métadonnées (3 lignes), soit à partir de y = 10 environ.
+    if mouse.row < 11 {
+        return None;
+    }
+
+    let ligne_cliquee = (mouse.row as usize) - 11;
+    if let Some(ligne) = etat.brouillon.lignes.get(ligne_cliquee)
+        && !ligne.compte.is_empty()
+    {
+        etat.posting_selectionne = ligne_cliquee;
+        etat.champ_actif = Champ::Postings;
+    }
+
+    None
+}

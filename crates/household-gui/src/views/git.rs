@@ -229,3 +229,38 @@ pub fn on_key(key: KeyEvent, etat: &mut UiState) -> Option<ActionGit> {
         _ => None,
     }
 }
+
+/// Gère un événement souris pour le Git.
+///
+/// Retourne une `ActionGit` si l'utilisateur a cliqué sur le bouton de commit
+/// ou sur une ligne de l'historique, `None` sinon.
+pub fn on_mouse(mouse: crossterm::event::MouseEvent, etat: &mut UiState) -> Option<ActionGit> {
+    use crossterm::event::MouseEventKind;
+
+    if mouse.kind != MouseEventKind::Down(crossterm::event::MouseButton::Left) {
+        return None;
+    }
+
+    // Clic sur le bouton commit (y = 5 environ, après résumé et message).
+    if mouse.row == 6 && mouse.column > 2 && mouse.column < 20 {
+        return Some(ActionGit::Commit(etat.message.value.trim().to_string()));
+    }
+
+    // Clic sur une ligne de l'historique (y >= 10 environ).
+    if mouse.row >= 10 && !git_disponible_is_empty(mouse) {
+        let ligne_cliquee = (mouse.row as usize) - 10;
+        // On ne fait rien de particulier pour l'instant, juste sélectionner
+        // la ligne. Le historique est affiché en lecture seule.
+        let _ = ligne_cliquee;
+    }
+
+    None
+}
+
+/// Vérifie s'il y a de l'historique à afficher.
+fn git_disponible_is_empty(_mouse: crossterm::event::MouseEvent) -> bool {
+    // Cette fonction est un placeholder ; la logique réelle vérifierait
+    // si git.historique est vide. Pour l'instant, on retourne toujours false
+    // pour permettre le clic sur les lignes.
+    false
+}

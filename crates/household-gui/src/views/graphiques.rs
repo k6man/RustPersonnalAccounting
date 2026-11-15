@@ -297,3 +297,34 @@ pub fn on_key(key: KeyEvent, etat: &mut UiState) -> Option<ActionGraphiques> {
         _ => None,
     }
 }
+
+/// Gère un événement souris pour le graphiques.
+///
+/// Retourne une `ActionGraphiques` si l'utilisateur a cliqué sur un onglet,
+/// `None` sinon.
+pub fn on_mouse(
+    mouse: crossterm::event::MouseEvent,
+    etat: &mut UiState,
+) -> Option<ActionGraphiques> {
+    use crossterm::event::MouseEventKind;
+
+    if mouse.kind != MouseEventKind::Down(crossterm::event::MouseButton::Left) {
+        return None;
+    }
+
+    // Les mini-onglets sont sur la première ligne (y = 1 environ, après la bordure).
+    // Les onglets sont : Répartition (col 0-20), Cascade (col 20-40), Budget vs réel (col 40-60).
+    if mouse.row < 2 {
+        let x = mouse.column as usize;
+        if x < 20 {
+            etat.onglet = 0;
+        } else if x < 40 {
+            etat.onglet = 1;
+        } else {
+            etat.onglet = 2;
+        }
+        return None;
+    }
+
+    None
+}

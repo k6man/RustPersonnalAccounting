@@ -49,6 +49,8 @@ pub struct UiState {
     pub ligne_selectionnee: usize,
     /// Mois sélectionné (0..=11).
     pub mois_selectionne: usize,
+    /// Posting sélectionné dans la ligne.
+    pub posting_selectionne: usize,
 }
 
 impl UiState {
@@ -57,6 +59,7 @@ impl UiState {
             annee,
             ligne_selectionnee: 0,
             mois_selectionne: 0,
+            posting_selectionne: 0,
         }
     }
 
@@ -272,4 +275,67 @@ pub fn on_key(
         }
         _ => None,
     }
+}
+
+/// Gère un événement souris pour le budget.
+///
+/// Retourne une `ActionBudget` si l'utilisateur a cliqué sur une cellule
+/// budgétaire, `None` sinon.
+pub fn on_mouse(
+    mouse: crossterm::event::MouseEvent,
+    etat: &mut UiState,
+    grille: Option<&BudgetGrid>,
+) -> Option<ActionBudget> {
+    use crossterm::event::MouseEventKind;
+
+    if mouse.kind != MouseEventKind::Down(crossterm::event::MouseButton::Left) {
+        return None;
+    }
+
+    let grille = grille?;
+
+    // Le tableau commence après l'en-tête (1 ligne) et l'aide (1 ligne),
+    // soit à partir de y = 2. Le tableau a une bordure, donc la première
+    // ligne de données est à y = 4 environ.
+    if mouse.row < 4 {
+        return None;
+    }
+
+    let ligne_cliquee = (mouse.row as usize) - 4;
+    let _ligne_idx = etat.ligne_index(Some(grille));
+    if ligne_cliquee >= grille.rows.len() {
+        return None;
+    }
+
+    // Déterminer le mois cliqué en fonction de la colonne X.
+    // Les colonnes sont : Poste (28), puis 12 colonnes de 10, puis Total (10) et Écart (10).
+    let x = mouse.column as usize;
+    let mois_idx = if x < 28 {
+        // Clic sur le poste, pas de mois spécifique
+        etat.mois_selectionne
+    } else {
+        let x_rel = x - 28;
+        let mois = x_rel / 10;
+        if mois < 12 {
+            mois
+        } else {
+            etat.mois_selectionne
+        }
+    };
+
+    etat.mois_selectionne = mois_idx;
+    etat.posting_selectionne = ligne_cliquee;
+
+    let ligne = &grille.rows[ligne_cliquee];
+    Some(ActionBudget::Cellule {
+        annee: etat.annee,
+        date: rustledger_core::NaiveDate::new(
+            etat.annee,
+            i8::try_from(mois_idx + 1).unwrap_or(1),
+            1,
+        )
+        .ok()?,
+        compte: ligne.account.clone(),
+        montant: ligne.cells[mois_idx].budgeted,
+    })
 }
