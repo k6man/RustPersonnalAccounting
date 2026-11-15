@@ -261,6 +261,34 @@ impl App {
             _ => {}
         }
 
+        // Délégation vers la vue Saisie pour l'édition des champs.
+        if self.ecran_actif == Onglet::Saisie.index()
+            && let Some(action) = self.saisie.on_key(
+                key,
+                self.donnees
+                    .as_ref()
+                    .map(|d| d.comptes.as_slice())
+                    .unwrap_or(&[]),
+                self.donnees
+                    .as_ref()
+                    .map(|d| d.payees.as_slice())
+                    .unwrap_or(&[]),
+            )
+        {
+            match action {
+                crate::views::saisie::Action::Enregistrer => {
+                    self.envoyer_brouillon();
+                }
+                crate::views::saisie::Action::Annuler => {
+                    self.saisie =
+                        crate::views::saisie::UiState::nouveau(crate::worker::aujourd_hui());
+                    self.saisie_en_vol = false;
+                    self.ecran_actif = Onglet::Journal.index();
+                }
+                crate::views::saisie::Action::Aucun => {}
+            }
+        }
+
         false
     }
 

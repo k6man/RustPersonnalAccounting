@@ -19,4 +19,5 @@ pub mod fmt;
 pub mod saisie;
 pub mod viewmodel;
 pub mod views;
+pub mod widgets;
 pub mod worker;
