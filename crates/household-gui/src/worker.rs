@@ -84,6 +84,13 @@ pub enum LoadOutcome {
         donnees: Arc<UiData>,
         message: String,
     },
+    /// Écriture budgétaire réussie : données fraîches + message, sans
+    /// changer d'écran (contrairement à [`LoadOutcome::Ecrit`] qui rebascula
+    /// sur le journal).
+    EcritBudget {
+        donnees: Arc<UiData>,
+        message: String,
+    },
     /// Écriture refusée (validation locale ou pré-vérification) : le ledger
     /// est inchangé, un message lisible accompagne le refus.
     Refuse(String),
@@ -377,7 +384,7 @@ fn cellule_budget(
     };
     match household_budget::writer::set_cell(&snapshot, annee, date, compte, montant) {
         Ok(nouveau) => match donnees_fraiches(&nouveau) {
-            Ok(donnees) => LoadOutcome::Ecrit {
+            Ok(donnees) => LoadOutcome::EcritBudget {
                 donnees,
                 message: format!("budget {compte} — {date} : {}", montant),
             },

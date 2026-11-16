@@ -32,10 +32,36 @@ renommée avec migration, badge GUI. Suite de l'audit RGPD du dépôt.
 
 ## En cours
 
-_Aucune tâche en cours._ Tous les jalons 1→8 sont terminés (v0.1.0 livré,
-tag `v0.1.0`). Le backlog « Revue de code » est intégralement traité
-(#1→#10 + flakiness temp dirs + 6 nits). Prochaine action : usage réel
-(saisie quotidienne, budgets 2027 via l'éditeur).
+**Revue TUI complète (2026-11-16)** puis réparation immédiate du blocage
+trouvé : l'arbre de travail contenait une fusion à moitié appliquée
+(`app.rs` + `worker.rs`, 10 erreurs `cargo check`). Réparé :
+
+- [x] Modale de confirmation de suppression achevée : champ
+  `confirmation_suppression: Option<usize>` (position d'affichage), rendu
+  `App::dessine_modal` (popup centrée + `Clear`), interception clavier
+  (Entrée confirme, toute autre touche annule, Ctrl+C reste au-dessus de la
+  modale) et souris (un clic gauche annule). La modale stocke la **position
+  d'affichage** et résout l'**index du ledger** uniquement à la confirmation.
+- [x] `envoyer_brouillon` restauré avec son corps d'origine
+  (`Command::Ecrire` / `Command::Modifier`) — la version cassée envoyait
+  `Command::Supprimer` : « Enregistrer » aurait supprimé une transaction.
+- [x] Bug latent de HEAD corrigé au passage : les actions clavier du journal
+  (Modifier/Supprimer) traitaient la **position d'affichage** comme un
+  `l.index` du ledger — dès que des directives précèdent les transactions,
+  la mauvaise ligne était visée. Désormais `lignes.get(pos)`.
+- [x] Navigation Budget branchée dans `App::on_key` (flèches uniquement ;
+  à HEAD aucun raccourci Budget n'était câblé). `budget::on_key` appelé
+  avec sa signature complète (5 arguments). **'e' volontairement non
+  branché** : l'ancien comportement réécrivait la valeur existante de la
+  cellule sans éditeur.
+- [x] `worker.rs` : `LoadOutcome::EcritBudget` (écriture budgétaire réussie
+  sans changer d'écran) conservé et traité dans `traiter_outcome`.
+- Validation : `just check` ✓ (fmt, clippy `-D warnings`, 80 tests,
+  `rledger check`).
+
+**Prochaine action : éditeur de cellule budgétaire** (plan détaillé dans
+« À faire », section « Revue TUI — suite »), puis le reste du backlog de la
+revue TUI.
 
 **Décisions tranchées avec la maîtresse d'ouvrage** : une seule fenêtre « Graphiques »
 avec des mini-onglets internes (pas une fenêtre par graphe) ; trois graphes
@@ -283,6 +309,62 @@ largeur, barres carte budget 180→240 ; fenêtre 1200×760 → 1300×800 (min 9
 `cargo check`/fmt/clippy/tests/`rledger check` verts après passe.
 
 ## À faire
+
+### Revue TUI — suite (2026-11-16)
+
+Revue complète du code TUI (apparence, clavier, souris) ; le bloquant
+(armure ne compilait pas) a été réparé le jour même (voir « En cours »).
+Reste, par priorité :
+
+- [ ] **#1 — Éditeur de cellule budgétaire** (P1 — plan détaillé plus bas).
+- [ ] **#2 — Saisie complète** (P1) : Date/Flag/Tiers/Libellé affichés
+  simultanément (aujourd'hui le champ actif écrase tout le bloc en-tête),
+  édition compte/montant des postings (`e` n'ouvre aucun éditeur), bascule
+  du flag `*`/`!` (aucune touche).
+- [ ] **#3 — Curseur visible dans `TextInput`** (P1) : `focused` jamais mis
+  à `true` (`set_focused` sans appelant), aucun caret rendu (REVERSED sur le
+  caractère sous le curseur, ou `terminal.set_cursor`).
+- [ ] **#4 — Filtrer `KeyEventKind::Press`** dans `App::run` : sans filtre,
+  les terminaux qui émettent Press+Release (Windows) traiteraient chaque
+  touche deux fois.
+- [ ] **#5 — Supprimer `graphiques::on_mouse`** : code mort (jamais appelé,
+  l'app route via `ActionClique`) et coordonnées magiques fausses vs le
+  rendu réel.
+- [ ] **#6 — Molette du Journal** : `ScrollUp`/`ScrollDown` ignorés alors
+  que la capture souris est active (utile dès que > 50 lignes).
+- [ ] **#7 — Largeurs Budget adaptatives** : ≈161 colonnes figées →
+  Total/Écart hors écran ≤ 120 colonnes.
+- [ ] **#8 — Flash avec expiration** : un message de succès reste affiché
+  indéfiniment.
+- [ ] **#9 — Esc cohérent** : quitte l'app sur 5 écrans sur 7, « annule »
+  sur la Saisie — un Esc global « retour/annuler » serait plus sain.
+- [ ] **#10 — AGENTS.md** : décrit une app egui (fenêtres flottantes,
+  `fenetres_ouvertes`, pièges egui 0.37) alors que le produit est une TUI
+  ratatui — mettre à jour la section Architecture.
+
+**Plan #1 — éditeur de cellule budgétaire.** Pré-ébauche déjà dans l'arbre :
+`App::on_key` route les flèches vers l'écran Budget et la gestion de
+`ActionBudget::Cellule` (envoi `Command::CelluleBudget`) est en place ;
+`budget::on_key` a des paramètres `_config`/`_cmd_tx` déjà prévus. Reste :
+
+1. `views/budget.rs` — `UiState.edition: Option<EditionCellule>` avec
+   `struct EditionCellule { ligne: usize, mois: usize, input: TextInput }` ;
+   `e` crée l'édition pré-remplie avec la valeur courante de la cellule.
+2. `budget::on_key` — si `edition.is_some()` : déléguer à `input.on_key`
+   (toutes les touches y vont, comme pour Saisie/Git) ; Entrée → parse
+   `Decimal` → `Some(ActionBudget::Cellule { … })` + `edition = None` ;
+   Esc → `edition = None` sans écriture. Décider du sort des params
+   `_config`/`_cmd_tx` (brancher ou supprimer).
+3. `budget::afficher` — rendre la cellule en édition mise en évidence
+   (caret inclus, cf. #3) et remplacer l'aide « à venir » par les vraies
+   touches (e éditer, Entrée valider, Esc annuler).
+4. `app.rs` — rétablir `self.budget.edition.is_some()` dans
+   `pour_le_budget` (le commentaire actuel le documente).
+5. Tests (`tests/gui_tui.rs`) : ouverture d'édition sur la bonne cellule,
+   validation → `Cellule` avec la bonne (annee, date, compte, montant),
+   annulation sans écriture, montant invalide refusé sans écriture, et
+   une régression : aucun `Command` budgétaire tant que l'édition n'est
+   pas validée explicitement.
 
 ### Séparation exemple / vrai ledger — restes (jalon 8, 2026-11-07)
 

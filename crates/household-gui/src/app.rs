@@ -12,7 +12,7 @@ use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, List, ListItem, Paragraph},
+    widgets::{Block, Borders, Clear, List, ListItem, Paragraph},
 };
 
 use household_core::ResolutionLedger;
@@ -91,6 +91,9 @@ pub struct App {
     echec: Option<String>,
     en_chargement: bool,
     flash: Option<(String, bool)>,
+    /// Position d'affichage (0-based dans les lignes affichées du journal)
+    /// de la transaction dont la suppression attend une confirmation modale.
+    confirmation_suppression: Option<usize>,
 
     ecran_actif: usize,
     params_ledger: bool,
@@ -153,6 +156,7 @@ impl App {
             echec: None,
             en_chargement: true,
             flash: None,
+            confirmation_suppression: None,
             ecran_actif,
             params_ledger,
             saisie_en_vol: false,
@@ -218,6 +222,12 @@ impl App {
                     self.saisie_en_vol = false;
                 }
             }
+            LoadOutcome::EcritBudget { donnees, message } => {
+                // Écriture budgétaire : on reste sur l'écran Budget.
+                self.donnees = Some(donnees);
+                self.echec = None;
+                self.flash = Some((message, false));
+            }
             LoadOutcome::Refuse(refus) => {
                 self.flash = Some((refus, true));
                 self.saisie_en_vol = false;
@@ -246,6 +256,31 @@ impl App {
     }
 
     fn on_key(&mut self, key: KeyEvent) -> bool {
+        // Ctrl+C : quitter (convention terminal), au-dessus de tout, y
+        // compris de la modale de confirmation ci-dessous.
+        if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('c') {
+            return true;
+        }
+
+        // Confirmation de suppression modale : Entrée confirme, toute autre
+        // touche annule (et est consommée).
+        if self.confirmation_suppression.is_some() {
+            if key.code == KeyCode::Enter {
+                let pos = self.confirmation_suppression.take().unwrap_or_default();
+                let index = self
+                    .donnees
+                    .as_ref()
+                    .and_then(|d| d.journal.lignes.get(pos))
+                    .map(|l| l.index);
+                if let Some(index) = index {
+                    self.demander_suppression(index);
+                }
+            } else {
+                self.confirmation_suppression = None;
+            }
+            return false;
+        }
+
         // Ctrl+1..7 : changement d'écran direct, prioritaire sur tout
         // (marche aussi depuis un formulaire).
         if key.modifiers.contains(KeyModifiers::CONTROL)
@@ -258,10 +293,6 @@ impl App {
                 self.changer_ecran(index);
             }
             return false;
-        }
-        // Ctrl+C : quitter (convention terminal).
-        if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('c') {
-            return true;
         }
 
         // Délégation par écran actif. Les écrans avec champ texte (Saisie,
@@ -328,6 +359,55 @@ impl App {
             return false;
         }
 
+        if self.ecran_actif == Onglet::Budget.index() {
+            let grille = self
+                .donnees
+                .as_ref()
+                .and_then(|d| d.grilles.get(&self.budget.annee));
+            // Navigation (flèches) déléguée à l'écran Budget ; les autres
+            // touches (q, r, l) restent globales. L'édition de cellule ('e')
+            // n'est PAS branchée tant que l'éditeur de cellule n'existe pas
+            // (voir plan « Éditeur de cellule budgétaire » dans TODO.md) :
+            // l'ancien comportement réécrivait la valeur existante.
+            let pour_le_budget = matches!(
+                key.code,
+                KeyCode::Up | KeyCode::Down | KeyCode::Left | KeyCode::Right
+            );
+            if pour_le_budget
+                && let Some(action) = budget::on_key(
+                    key,
+                    &mut self.budget,
+                    grille,
+                    &|famille| self.config.rollover_actif(famille),
+                    &self.cmd_tx,
+                )
+            {
+                match action {
+                    budget::ActionBudget::Cellule {
+                        annee,
+                        date,
+                        compte,
+                        montant,
+                    } => {
+                        self.en_chargement = true;
+                        self.flash = None;
+                        self.cmd_tx
+                            .send(Command::CelluleBudget {
+                                annee,
+                                date,
+                                compte,
+                                montant,
+                            })
+                            .ok();
+                    }
+                    budget::ActionBudget::GenererAnnee { .. }
+                    | budget::ActionBudget::BasculerRollover(_)
+                    | budget::ActionBudget::Aucun => {}
+                }
+                return false;
+            }
+        }
+
         // Journal : flèches/Entrée/Suppr. La sélection navigue dans les
         // MAX_LIGNES lignes affichées, pas dans tout l'historique. Les autres
         // touches tombent dans les commandes globales ci-dessous.
@@ -342,18 +422,19 @@ impl App {
                 .as_ref()
                 .map_or(0, |d| d.journal.lignes.len().min(journal::MAX_LIGNES));
             match journal::on_key(key, &mut self.journal, nb) {
-                Some(journal::ActionJournal::Modifier(index)) => {
+                Some(journal::ActionJournal::Modifier(pos)) => {
                     let ligne = self
                         .donnees
                         .as_ref()
-                        .and_then(|d| d.journal.lignes.iter().find(|l| l.index == index).cloned());
+                        .and_then(|d| d.journal.lignes.get(pos))
+                        .cloned();
                     if let Some(ligne) = ligne {
                         self.saisie = crate::views::saisie::UiState::modification(&ligne);
                         self.ecran_actif = Onglet::Saisie.index();
                     }
                 }
-                Some(journal::ActionJournal::Supprimer(index)) => {
-                    self.demander_suppression(index);
+                Some(journal::ActionJournal::Supprimer(pos)) => {
+                    self.confirmer_suppression(pos);
                 }
                 Some(journal::ActionJournal::Aucun) | None => {}
             }
@@ -373,6 +454,15 @@ impl App {
 
     fn on_mouse(&mut self, mouse: MouseEvent) {
         use crossterm::event::MouseEventKind;
+
+        // La modale de confirmation intercepte tout : un clic gauche annule
+        // (cohérent avec « toute autre touche annule » au clavier).
+        if self.confirmation_suppression.is_some() {
+            if let MouseEventKind::Down(MouseButton::Left) = mouse.kind {
+                self.confirmation_suppression = None;
+            }
+            return;
+        }
 
         if let MouseEventKind::Down(MouseButton::Left) = mouse.kind {
             let point = ratatui::layout::Position {
@@ -552,7 +642,6 @@ impl App {
         self.cmd_tx.send(Command::Reload).ok();
     }
 
-    #[allow(dead_code)]
     fn envoyer_brouillon(&mut self) {
         if self.saisie_en_vol {
             return;
@@ -578,7 +667,20 @@ impl App {
         }
     }
 
-    #[allow(dead_code)]
+    /// Ouvre la modale de confirmation pour la transaction affichée à la
+    /// position `pos` (index d'affichage dans les lignes affichées du journal).
+    fn confirmer_suppression(&mut self, pos: usize) {
+        if self
+            .donnees
+            .as_ref()
+            .is_some_and(|d| pos < d.journal.lignes.len())
+        {
+            self.confirmation_suppression = Some(pos);
+        }
+    }
+
+    /// Supprime la transaction d'index `index` (index du ledger, pas la
+    /// position d'affichage) — appelé uniquement après confirmation.
     fn demander_suppression(&mut self, index: usize) {
         let Some(donnees) = &self.donnees else {
             return;
@@ -612,6 +714,37 @@ impl App {
         self.dessine_entete(f, chunks[1]);
         self.dessine_contenu(f, chunks[2]);
         self.dessine_flash(f, chunks[3]);
+        if self.confirmation_suppression.is_some() {
+            self.dessine_modal(f, f.size());
+        }
+    }
+
+    /// Modale de confirmation de suppression, superposée au contenu.
+    fn dessine_modal(&self, f: &mut Frame, area: ratatui::layout::Rect) {
+        let Some(pos) = self.confirmation_suppression else {
+            return;
+        };
+        let resume = self
+            .donnees
+            .as_ref()
+            .and_then(|d| d.journal.lignes.get(pos))
+            .map(|l| format!("{} — {}", l.date, l.libelle))
+            .unwrap_or_default();
+
+        let zone = rect_centre(72, 5, area);
+        f.render_widget(Clear, zone);
+        let texte = vec![
+            Line::from(format!(" Supprimer : {resume} ")),
+            Line::from(" Entrée : supprimer — toute autre touche : annuler "),
+        ];
+        let style = Style::default().fg(Color::White).bg(Color::Red);
+        let modal = Paragraph::new(texte).style(style).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(" Confirmer la suppression ")
+                .style(style),
+        );
+        f.render_widget(modal, zone);
     }
 
     fn dessine_entete(&self, f: &mut Frame, area: ratatui::layout::Rect) {
@@ -787,6 +920,19 @@ pub fn titres_onglets() -> Vec<String> {
         .enumerate()
         .map(|(i, onglet)| format!("{ctrl} {nom}", ctrl = i + 1, nom = onglet.libelle()))
         .collect()
+}
+
+/// Rectangle centré, borné à l'aire — pour la modale de confirmation.
+#[must_use]
+fn rect_centre(largeur: u16, hauteur: u16, area: Rect) -> Rect {
+    let largeur = largeur.min(area.width);
+    let hauteur = hauteur.min(area.height);
+    Rect {
+        x: area.x + (area.width - largeur) / 2,
+        y: area.y + (area.height - hauteur) / 2,
+        width: largeur,
+        height: hauteur,
+    }
 }
 
 /// Zones cliquables des onglets pour une aire d'écran donnée.
