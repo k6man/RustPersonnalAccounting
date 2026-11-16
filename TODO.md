@@ -76,9 +76,32 @@ champs de saisie (pré-requis) :
   (comme Saisie/Git). Titre de bloc et aide mis à jour. 7 tests dont la
   régression « aucun `ActionBudget::Cellule` sans validation explicite ».
 
-**Prochaine action : backlog de la revue TUI** — priorité #2 (saisie
-complète : formulaire visible champ par champ, édition compte/montant des
-postings, bascule du flag).
+**Saisie complète livrée (2026-11-16, backlog #2)** — l'écran Saisie est
+maintenant un vrai formulaire :
+
+- [x] Date/Flag/Tiers/Libellé/Tags/Liens affichés **simultanément** (une
+  ligne chacun, caret sur le champ actif) — avant, le champ actif écrasait
+  tout le bloc en-tête ; Tags/Liens éditables et visibles (avant : liste
+  figée, saisie à l'aveugle, et le bloc `Length(3)` rognait la ligne Liens).
+- [x] Édition compte+montant des postings : `e` ouvre un éditeur sur la
+  ligne sélectionnée (Tab/Entrée passe du compte au montant, brouillon
+  inchangé avant validation, montant invalide garde l'édition ouverte avec
+  cellule rouge, Esc annule) ; flèches ↑/↓ sur le champ Postings pour
+  choisir la ligne.
+- [x] Bascule du flag `*`/`!` avec `f` (depuis Flag/Postings ; dans un
+  champ texte `f` reste du texte).
+- [x] Réutilisation du module pur `crate::saisie` : brouillon via
+  `Brouillon::vierge` (2 lignes prêtes) et `depuis_ligne` (montants
+  re-parsables « 85.00 » — le pré-remplissage avec `fmt::eur` « 85,00 € »
+  cassait le parse et l'indicateur d'équilibre), avis du pied d'écran via
+  `residus()` (« reste à répartir » par devise) et `erreurs()` (première
+  erreur de forme). Étiquette « ÉQUILIBRAGE » = compte saisi + montant vide.
+- [x] Tests : 6 nouveaux + fixture corrigé (tags sans `#`, comme le
+  viewmodel) — 38 tests TUI verts, `just check` ✓.
+
+**Prochaine action : suite du backlog de la revue TUI** — #4 (filtrer
+`KeyEventKind::Press`), #5 (supprimer `graphiques::on_mouse` mort), #6
+(molette du Journal), #7 (largeurs Budget adaptatives).
 
 **Décisions tranchées avec la maîtresse d'ouvrage** : une seule fenêtre « Graphiques »
 avec des mini-onglets internes (pas une fenêtre par graphe) ; trois graphes
@@ -335,10 +358,9 @@ Reste, par priorité :
 
 - [x] **#1 — Éditeur de cellule budgétaire** (P1 — plan détaillé plus bas)
   (2026-11-16, voir « En cours »).
-- [ ] **#2 — Saisie complète** (P1) : Date/Flag/Tiers/Libellé affichés
-  simultanément (aujourd'hui le champ actif écrase tout le bloc en-tête),
-  édition compte/montant des postings (`e` n'ouvre aucun éditeur), bascule
-  du flag `*`/`!` (aucune touche).
+- [x] **#2 — Saisie complète** (P1) (2026-11-16, voir « En cours ») :
+  formulaire champ par champ, édition compte/montant des postings via `e`,
+  bascule du flag avec `f`, avis via `residus()`/`erreurs()`.
 - [x] **#3 — Curseur visible dans `TextInput`** (P1) (2026-11-16) :
   `ligne_avec_curseur()` (caret inversé), focus synchronisé au rendu
   (`sync_focus` Saisie, `set_focused` Git) ; rendus Saisie/Git basculés sur

@@ -97,7 +97,7 @@ fn donnees_test() -> Arc<UiData> {
                         montant: Some((Decimal::new(8500, 2), "EUR".to_string())),
                     }],
                     categories: "Alimentation".to_string(),
-                    tags: vec!["#courses".to_string()],
+                    tags: vec!["courses".to_string()],
                     liens: vec![],
                     fichier: "transactions/2026/03.beancount".to_string(),
                     ligne: 42,
@@ -412,7 +412,11 @@ fn saisie_saisit_les_lettres_commandes_dans_un_champ_texte() {
         saisie::Champ::Libelle,
         "pas de saut de champ"
     );
-    assert_eq!(etat.brouillon.lignes.len(), 0, "pas de posting ajouté");
+    assert_eq!(
+        etat.brouillon.lignes.len(),
+        2,
+        "brouillon vierge : 2 lignes prêtes, aucune ajoutée"
+    );
 }
 
 #[test]
@@ -420,15 +424,15 @@ fn saisie_ajoute_et_supprime_posting() {
     let donnees = donnees_test();
     let mut etat = saisie::UiState::nouveau("2026-03-15".parse().unwrap());
 
-    // '+' ajoute une ligne de posting.
+    // '+' ajoute une ligne de posting (le brouillon vierge en a déjà 2).
     let action = etat.on_key(
         key(KeyCode::Char('+'), KeyModifiers::NONE),
         &donnees.comptes,
         &donnees.payees,
     );
     assert!(action.is_none());
-    assert_eq!(etat.brouillon.lignes.len(), 1);
-    assert_eq!(etat.posting_selectionne, 0);
+    assert_eq!(etat.brouillon.lignes.len(), 3);
+    assert_eq!(etat.posting_selectionne, 2);
 
     // '×' supprime la ligne.
     let action = etat.on_key(
@@ -437,7 +441,253 @@ fn saisie_ajoute_et_supprime_posting() {
         &donnees.payees,
     );
     assert!(action.is_none());
-    assert_eq!(etat.brouillon.lignes.len(), 0);
+    assert_eq!(etat.brouillon.lignes.len(), 2);
+}
+
+#[test]
+fn saisie_bascule_le_flag_avec_f() {
+    let donnees = donnees_test();
+    let mut etat = saisie::UiState::nouveau("2026-03-15".parse().unwrap());
+
+    // Depuis le champ Flag, 'f' bascul '*' ⇄ '!'.
+    etat.on_key(
+        key(KeyCode::Tab, KeyModifiers::NONE),
+        &donnees.comptes,
+        &donnees.payees,
+    );
+    assert_eq!(etat.champ_actif, saisie::Champ::Flag);
+    etat.on_key(
+        key(KeyCode::Char('f'), KeyModifiers::NONE),
+        &donnees.comptes,
+        &donnees.payees,
+    );
+    assert_eq!(etat.brouillon.flag, '!');
+    etat.on_key(
+        key(KeyCode::Char('f'), KeyModifiers::NONE),
+        &donnees.comptes,
+        &donnees.payees,
+    );
+    assert_eq!(etat.brouillon.flag, '*');
+
+    // Mais dans un champ texte, 'f' reste du texte (retour sur Tiers).
+    etat.on_key(
+        key(KeyCode::Tab, KeyModifiers::NONE),
+        &donnees.comptes,
+        &donnees.payees,
+    );
+    assert_eq!(etat.champ_actif, saisie::Champ::Tiers);
+    etat.on_key(
+        key(KeyCode::Char('f'), KeyModifiers::NONE),
+        &donnees.comptes,
+        &donnees.payees,
+    );
+    assert_eq!(etat.brouillon.tiers, "f");
+    assert_eq!(etat.brouillon.flag, '*', "le flag n'a pas bougé");
+}
+
+#[test]
+fn saisie_edite_posting_compte_puis_montant() {
+    let donnees = donnees_test();
+    let mut etat = saisie::UiState::nouveau("2026-03-15".parse().unwrap());
+
+    // Ajoute une ligne, puis 'e' ouvre l'éditeur sur le compte.
+    etat.on_key(
+        key(KeyCode::Char('+'), KeyModifiers::NONE),
+        &donnees.comptes,
+        &donnees.payees,
+    );
+    etat.on_key(
+        key(KeyCode::Char('e'), KeyModifiers::NONE),
+        &donnees.comptes,
+        &donnees.payees,
+    );
+    let edition = etat.edition_posting.as_ref().expect("édition ouverte");
+    assert_eq!(edition.index, 2);
+    assert_eq!(edition.champ, saisie::ChampPosting::Compte);
+
+    // Tape le compte : les lettres consommées (r, x, e…) restent du texte.
+    for c in "Expenses:Alimentation:Courses".chars() {
+        etat.on_key(
+            key(KeyCode::Char(c), KeyModifiers::NONE),
+            &donnees.comptes,
+            &donnees.payees,
+        );
+    }
+
+    // Tab passe au montant.
+    etat.on_key(
+        key(KeyCode::Tab, KeyModifiers::NONE),
+        &donnees.comptes,
+        &donnees.payees,
+    );
+    let edition = etat.edition_posting.as_ref().expect("toujours en édition");
+    assert_eq!(edition.champ, saisie::ChampPosting::Montant);
+    assert_eq!(
+        edition.compte_edite, "Expenses:Alimentation:Courses",
+        "le compte édité est conservé"
+    );
+
+    // Saisie du montant (virgule décimale), Entrée valide.
+    for c in "25,50".chars() {
+        etat.on_key(
+            key(KeyCode::Char(c), KeyModifiers::NONE),
+            &donnees.comptes,
+            &donnees.payees,
+        );
+    }
+    let action = etat.on_key(
+        key(KeyCode::Enter, KeyModifiers::NONE),
+        &donnees.comptes,
+        &donnees.payees,
+    );
+    assert!(
+        action.is_none(),
+        "la validation d'un posting n'enregistre pas"
+    );
+    assert!(etat.edition_posting.is_none(), "édition fermée");
+    assert_eq!(
+        etat.brouillon.lignes[2],
+        crate_saisie_ligne("Expenses:Alimentation:Courses", "25,50")
+    );
+}
+
+#[test]
+fn saisie_edition_posting_esc_annule_sans_ecrire() {
+    let donnees = donnees_test();
+    let mut etat = saisie::UiState::nouveau("2026-03-15".parse().unwrap());
+
+    etat.on_key(
+        key(KeyCode::Char('+'), KeyModifiers::NONE),
+        &donnees.comptes,
+        &donnees.payees,
+    );
+    etat.on_key(
+        key(KeyCode::Char('e'), KeyModifiers::NONE),
+        &donnees.comptes,
+        &donnees.payees,
+    );
+    etat.edition_posting.as_mut().unwrap().input.value = "Assets:Test".to_string();
+
+    let action = etat.on_key(
+        key(KeyCode::Esc, KeyModifiers::NONE),
+        &donnees.comptes,
+        &donnees.payees,
+    );
+    assert!(action.is_none(), "Esc n'enregistre pas");
+    assert!(etat.edition_posting.is_none(), "édition fermée");
+    assert_eq!(etat.brouillon.lignes[2].compte, "", "brouillon inchangé");
+}
+
+#[test]
+fn saisie_edition_posting_montant_invalide_garde_ouverte() {
+    let donnees = donnees_test();
+    let mut etat = saisie::UiState::nouveau("2026-03-15".parse().unwrap());
+
+    etat.on_key(
+        key(KeyCode::Char('+'), KeyModifiers::NONE),
+        &donnees.comptes,
+        &donnees.payees,
+    );
+    etat.on_key(
+        key(KeyCode::Char('e'), KeyModifiers::NONE),
+        &donnees.comptes,
+        &donnees.payees,
+    );
+    // Compte saisi, passage au montant.
+    etat.edition_posting.as_mut().unwrap().input.value = "Expenses:Test".to_string();
+    etat.on_key(
+        key(KeyCode::Tab, KeyModifiers::NONE),
+        &donnees.comptes,
+        &donnees.payees,
+    );
+    etat.edition_posting.as_mut().unwrap().input.value = "abc".to_string();
+
+    let action = etat.on_key(
+        key(KeyCode::Enter, KeyModifiers::NONE),
+        &donnees.comptes,
+        &donnees.payees,
+    );
+    assert!(action.is_none(), "montant invalide : aucune écriture");
+    assert!(
+        etat.edition_posting.is_some(),
+        "l'édition reste ouverte pour corriger"
+    );
+    assert_eq!(etat.brouillon.lignes[2].montant, "", "brouillon inchangé");
+}
+
+#[test]
+fn saisie_modification_prefill_parsable() {
+    // Régression : le pré-remplissage passait par fmt::eur (« 85,00 € »),
+    // non re-parsable — depuis_ligne rend « 85.00 ».
+    let donnees = donnees_test();
+    let ligne = &donnees.journal.lignes[0];
+    let etat = saisie::UiState::modification(ligne);
+
+    assert_eq!(
+        etat.brouillon.lignes[0].compte,
+        "Expenses:Alimentation:Courses"
+    );
+    assert_eq!(etat.brouillon.lignes[0].montant, "85.00");
+    assert!(
+        household_gui::saisie::parse_montant(&etat.brouillon.lignes[0].montant).is_ok(),
+        "montant pré-rempli re-parsable"
+    );
+    assert_eq!(etat.brouillon.tiers, "Carrefour");
+    assert_eq!(etat.brouillon.tags, "#courses", "tags avec préfixe");
+}
+
+#[test]
+fn saisie_rendu_edition_posting_ne_panique_pas() {
+    let donnees = donnees_test();
+    let mut etat = saisie::UiState::nouveau("2026-03-15".parse().unwrap());
+    etat.on_key(
+        key(KeyCode::Char('+'), KeyModifiers::NONE),
+        &donnees.comptes,
+        &donnees.payees,
+    );
+    etat.on_key(
+        key(KeyCode::Char('e'), KeyModifiers::NONE),
+        &donnees.comptes,
+        &donnees.payees,
+    );
+    for c in "Assets:Banque:CompteCourant".chars() {
+        etat.on_key(
+            key(KeyCode::Char(c), KeyModifiers::NONE),
+            &donnees.comptes,
+            &donnees.payees,
+        );
+    }
+    etat.on_key(
+        key(KeyCode::Tab, KeyModifiers::NONE),
+        &donnees.comptes,
+        &donnees.payees,
+    );
+    for c in "25,50".chars() {
+        etat.on_key(
+            key(KeyCode::Char(c), KeyModifiers::NONE),
+            &donnees.comptes,
+            &donnees.payees,
+        );
+    }
+
+    render_safe(buffer_rect(), |frame| {
+        saisie::afficher(
+            frame,
+            buffer_rect(),
+            &mut etat,
+            &donnees.comptes,
+            &donnees.payees,
+            &mut Vec::new(),
+        );
+    });
+}
+
+/// Petit helper de test : une LigneBrouillon attendue.
+fn crate_saisie_ligne(compte: &str, montant: &str) -> household_gui::saisie::LigneBrouillon {
+    household_gui::saisie::LigneBrouillon {
+        compte: compte.to_string(),
+        montant: montant.to_string(),
+    }
 }
 
 #[test]
