@@ -264,6 +264,29 @@ fn journal_deplace_selection_et_actions() {
 }
 
 #[test]
+fn journal_molette_deplace_la_selection() {
+    let donnees = donnees_test();
+    let mut etat = journal::UiState::new();
+    let nb = donnees.journal.lignes.len();
+
+    // Pas de sélection explicite : la molette vers le bas sélectionne 1.
+    etat.descendre(nb);
+    assert_eq!(etat.selection, Some(1));
+
+    // La molette vers le haut remonte.
+    etat.monter(nb);
+    assert_eq!(etat.selection, Some(0));
+
+    // Bornes : remonter depuis 0 ne fait rien, descendre au max s'arrête.
+    etat.monter(nb);
+    assert_eq!(etat.selection, Some(0), "borné en haut");
+    for _ in 0..10 {
+        etat.descendre(nb);
+    }
+    assert_eq!(etat.selection, Some(nb - 1), "borné en bas");
+}
+
+#[test]
 fn journal_supprime_selection() {
     let donnees = donnees_test();
     let mut etat = journal::UiState::new();

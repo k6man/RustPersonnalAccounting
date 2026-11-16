@@ -99,9 +99,22 @@ maintenant un vrai formulaire :
 - [x] Tests : 6 nouveaux + fixture corrigé (tags sans `#`, comme le
   viewmodel) — 38 tests TUI verts, `just check` ✓.
 
-**Prochaine action : suite du backlog de la revue TUI** — #4 (filtrer
-`KeyEventKind::Press`), #5 (supprimer `graphiques::on_mouse` mort), #6
-(molette du Journal), #7 (largeurs Budget adaptatives).
+**Backlog revue TUI — #4/#5/#6 livrés (2026-11-16)** :
+
+- [x] **#4 — `KeyEventKind::Press` filtré** dans `App::run` : les
+  terminaux/OS qui émettent Press+Release ne traitent plus chaque touche
+  deux fois.
+- [x] **#5 — `graphiques::on_mouse` supprimé** : code mort (jamais appelé,
+  l'app route via `ActionClique`) et coordonnées magiques fausses vs le
+  rendu réel ; commentaire d'orientation laissé sur place.
+- [x] **#6 — Molette du Journal** : `ScrollUp`/`ScrollDown` déplacent la
+  sélection (bornée à MAX_LIGNES) via `journal::UiState::monter/descendre`,
+  partagées avec les flèches clavier. 1 test.
+- [x] **#1/#2/#3 livrés le jour même** (voir ci-dessus).
+
+**Prochaine action : suite du backlog de la revue TUI** — #7 (largeurs
+Budget adaptatives), #8 (flash expirable), #9 (Esc cohérent), #10
+(AGENTS.md à mettre à jour : le produit est une TUI ratatui).
 
 **Décisions tranchées avec la maîtresse d'ouvrage** : une seule fenêtre « Graphiques »
 avec des mini-onglets internes (pas une fenêtre par graphe) ; trois graphes
@@ -365,14 +378,14 @@ Reste, par priorité :
   `ligne_avec_curseur()` (caret inversé), focus synchronisé au rendu
   (`sync_focus` Saisie, `set_focused` Git) ; rendus Saisie/Git basculés sur
   la ligne avec caret.
-- [ ] **#4 — Filtrer `KeyEventKind::Press`** dans `App::run` : sans filtre,
-  les terminaux qui émettent Press+Release (Windows) traiteraient chaque
-  touche deux fois.
-- [ ] **#5 — Supprimer `graphiques::on_mouse`** : code mort (jamais appelé,
-  l'app route via `ActionClique`) et coordonnées magiques fausses vs le
-  rendu réel.
-- [ ] **#6 — Molette du Journal** : `ScrollUp`/`ScrollDown` ignorés alors
-  que la capture souris est active (utile dès que > 50 lignes).
+- [x] **#4 — Filtrer `KeyEventKind::Press`** dans `App::run` (2026-11-16) :
+  les terminaux qui émettent Press+Release ne traitent plus chaque touche
+  deux fois.
+- [x] **#5 — Supprimer `graphiques::on_mouse`** (2026-11-16) : code mort,
+  coordonnées magiques fausses vs le rendu réel.
+- [x] **#6 — Molette du Journal** (2026-11-16) : `ScrollUp`/`ScrollDown`
+  déplacent la sélection via `monter`/`descendre`, partagées avec les
+  flèches ; bornée à MAX_LIGNES.
 - [ ] **#7 — Largeurs Budget adaptatives** : ≈161 colonnes figées →
   Total/Écart hors écran ≤ 120 colonnes.
 - [ ] **#8 — Flash avec expiration** : un message de succès reste affiché

@@ -48,6 +48,22 @@ impl UiState {
         self.selection = Some(index);
         self.table_state.select(Some(index));
     }
+
+    /// Déplace la sélection d'une ligne vers le haut (molette ou flèche).
+    pub fn monter(&mut self, nb_lignes: usize) {
+        let actuel = self.selection_index(nb_lignes);
+        if actuel > 0 {
+            self.set_selection(actuel - 1);
+        }
+    }
+
+    /// Déplace la sélection d'une ligne vers le bas (molette ou flèche).
+    pub fn descendre(&mut self, nb_lignes: usize) {
+        let actuel = self.selection_index(nb_lignes);
+        if actuel < nb_lignes.saturating_sub(1) {
+            self.set_selection(actuel + 1);
+        }
+    }
 }
 
 /// Nombre maximal de lignes affichées (pagination sommaire). La sélection
@@ -177,17 +193,11 @@ pub fn on_key(
 ) -> Option<ActionJournal> {
     match key.code {
         crossterm::event::KeyCode::Up => {
-            let actuel = etat.selection_index(nb_lignes);
-            if actuel > 0 {
-                etat.set_selection(actuel - 1);
-            }
+            etat.monter(nb_lignes);
             None
         }
         crossterm::event::KeyCode::Down => {
-            let actuel = etat.selection_index(nb_lignes);
-            if actuel < nb_lignes.saturating_sub(1) {
-                etat.set_selection(actuel + 1);
-            }
+            etat.descendre(nb_lignes);
             None
         }
         crossterm::event::KeyCode::Enter => {

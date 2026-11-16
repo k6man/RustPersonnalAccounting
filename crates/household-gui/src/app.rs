@@ -5,7 +5,9 @@ use std::sync::Arc;
 use std::sync::mpsc::{Receiver, Sender};
 use std::time::Duration;
 
-use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent};
+use crossterm::event::{
+    self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseButton, MouseEvent,
+};
 use ratatui::{
     Frame, Terminal,
     backend::Backend,
@@ -187,7 +189,10 @@ impl App {
 
             if event::poll(Duration::from_millis(100)).map_err(|e| e.to_string())? {
                 match event::read().map_err(|e| e.to_string())? {
-                    Event::Key(key) => {
+                    // Seuls les appuis comptent : certains terminaux/OS
+                    // émettent aussi des Release — sans filtre, chaque
+                    // touche serait traitée deux fois.
+                    Event::Key(key) if key.kind == KeyEventKind::Press => {
                         if self.on_key(key) {
                             break Ok(());
                         }
@@ -462,6 +467,25 @@ impl App {
         if self.confirmation_suppression.is_some() {
             if let MouseEventKind::Down(MouseButton::Left) = mouse.kind {
                 self.confirmation_suppression = None;
+            }
+            return;
+        }
+
+        // Molette : sur le Journal, elle déplace la sélection (comme les
+        // flèches). Les autres écrans n'ont pas de défilement pour l'instant.
+        if matches!(
+            mouse.kind,
+            MouseEventKind::ScrollUp | MouseEventKind::ScrollDown
+        ) && self.ecran_actif == Onglet::Journal.index()
+        {
+            let nb = self
+                .donnees
+                .as_ref()
+                .map_or(0, |d| d.journal.lignes.len().min(journal::MAX_LIGNES));
+            if mouse.kind == MouseEventKind::ScrollUp {
+                self.journal.monter(nb);
+            } else {
+                self.journal.descendre(nb);
             }
             return;
         }
