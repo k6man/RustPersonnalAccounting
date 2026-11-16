@@ -106,9 +106,10 @@ impl UiState {
     }
 }
 
-/// Dessine l'écran budget.
+/// Dessine l'écran budget dans la zone `area`.
 pub fn afficher(
     f: &mut Frame,
+    area: Rect,
     grille: Option<&BudgetGrid>,
     etat: &mut UiState,
     _rollover_actif: &dyn Fn(&str) -> bool,
@@ -123,27 +124,25 @@ pub fn afficher(
             Constraint::Length(1), // aide
             Constraint::Min(0),    // tableau
         ])
-        .split(f.size());
+        .split(area);
 
-    // 1. Titre.
+    // 1. Titre (sans bordure : la rangée fait 1 ligne, une bordure masquerait
+    // le texte).
     let titre = Paragraph::new(format!(
-        " Budget {}  (flèches haut/bas pour naviguer, gauche/droite pour le mois, Entrée pour éditer)",
+        " Budget {}  (flèches haut/bas pour naviguer, gauche/droite pour le mois)",
         etat.annee
     ))
-    .block(
-        Block::default()
-            .borders(Borders::ALL)
-            .title(format!(" Budget {} ", etat.annee)),
-    )
-    .style(Style::default().fg(Color::White));
+    .style(
+        Style::default()
+            .fg(Color::Yellow)
+            .add_modifier(Modifier::BOLD),
+    );
     f.render_widget(titre, chunks[0]);
 
-    // 2. Aide rapide.
-    let aide = Paragraph::new(
-        " + : ajouter une ligne  |  × : supprimer  |  e : éditer la cellule  |  g : générer l'année suivante",
-    )
-    .block(Block::default().borders(Borders::NONE))
-    .style(Style::default().fg(Color::Gray));
+    // 2. Aide rapide (honête : l'édition de cellule au clavier n'est pas
+    // encore branchée).
+    let aide = Paragraph::new(" Édition des cellules budgétaires au clavier : à venir.")
+        .style(Style::default().fg(Color::Gray));
     f.render_widget(aide, chunks[1]);
 
     // 3. Tableau budget vs réel.
@@ -218,25 +217,23 @@ pub fn afficher(
 
     f.render_widget(tableau, chunks[2]);
 
-    // Enregistrer les zones cliquables des cellules budgétaires.
-    for (i, ligne) in grille.rows.iter().enumerate() {
-        let ligne_y = chunks[2].top() + 1 + i as u16;
+    // Enregistrer les zones cliquables des lignes budgétaires : un clic
+    // sélectionne la ligne (affichage), sans écriture dans le ledger. La
+    // première rangée de données est 3 lignes sous le haut du bloc :
+    // bordure, en-tête, marge basse d'en-tête.
+    for (i, _ligne) in grille.rows.iter().enumerate() {
+        let ligne_y = chunks[2].top() + 3 + i as u16;
         if ligne_y >= chunks[2].bottom() {
             break;
         }
         zones_cliquables.push((
-            Rect::new(chunks[2].left() + 1, ligne_y, chunks[2].width - 2, 1),
-            ActionClique::BudgetCellule {
-                annee: etat.annee,
-                date: rustledger_core::NaiveDate::new(
-                    etat.annee,
-                    i8::try_from(etat.mois_selectionne + 1).unwrap_or(1),
-                    1,
-                )
-                .unwrap_or_default(),
-                compte: ligne.account.clone(),
-                montant: ligne.cells[etat.mois_selectionne].budgeted,
-            },
+            Rect::new(
+                chunks[2].left() + 1,
+                ligne_y,
+                chunks[2].width.saturating_sub(2),
+                1,
+            ),
+            ActionClique::BudgetLigne(i),
         ));
     }
 
@@ -295,66 +292,4 @@ pub fn on_key(
         }
         _ => None,
     }
-}
-
-/// Gère un événement souris pour le budget.
-///
-/// Retourne une `ActionBudget` si l'utilisateur a cliqué sur une cellule
-/// budgétaire, `None` sinon.
-pub fn on_mouse(
-    mouse: crossterm::event::MouseEvent,
-    etat: &mut UiState,
-    grille: Option<&BudgetGrid>,
-) -> Option<ActionBudget> {
-    use crossterm::event::MouseEventKind;
-
-    if mouse.kind != MouseEventKind::Down(crossterm::event::MouseButton::Left) {
-        return None;
-    }
-
-    let grille = grille?;
-
-    // Le tableau commence après l'en-tête (1 ligne) et l'aide (1 ligne),
-    // soit à partir de y = 2. Le tableau a une bordure, donc la première
-    // ligne de données est à y = 4 environ.
-    if mouse.row < 4 {
-        return None;
-    }
-
-    let ligne_cliquee = (mouse.row as usize) - 4;
-    let _ligne_idx = etat.ligne_index(Some(grille));
-    if ligne_cliquee >= grille.rows.len() {
-        return None;
-    }
-
-    // Déterminer le mois cliqué en fonction de la colonne X.
-    let x = mouse.column as usize;
-    let mois_idx = if x < 28 {
-        // Clic sur le poste, pas de mois spécifique
-        etat.mois_selectionne
-    } else {
-        let x_rel = x - 28;
-        let mois = x_rel / 10;
-        if mois < 12 {
-            mois
-        } else {
-            etat.mois_selectionne
-        }
-    };
-
-    etat.mois_selectionne = mois_idx;
-    etat.ligne_selectionne = ligne_cliquee;
-
-    let ligne = &grille.rows[ligne_cliquee];
-    Some(ActionBudget::Cellule {
-        annee: etat.annee,
-        date: rustledger_core::NaiveDate::new(
-            etat.annee,
-            i8::try_from(mois_idx + 1).unwrap_or(1),
-            1,
-        )
-        .ok()?,
-        compte: ligne.account.clone(),
-        montant: ligne.cells[mois_idx].budgeted,
-    })
 }

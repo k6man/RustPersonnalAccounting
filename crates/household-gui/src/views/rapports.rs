@@ -11,9 +11,10 @@ use crate::app::ActionClique;
 use crate::fmt::eur;
 use crate::viewmodel::RapportsData;
 
-/// Dessine l'écran rapports.
+/// Dessine l'écran rapports dans la zone `area`.
 pub fn afficher(
     f: &mut Frame,
+    area: Rect,
     donnees: &RapportsData,
     _zones_cliquables: &mut Vec<(Rect, ActionClique)>,
 ) {
@@ -23,7 +24,7 @@ pub fn afficher(
             Constraint::Length(4), // synthèse
             Constraint::Min(0),    // dépenses par mois
         ])
-        .split(f.size());
+        .split(area);
 
     // 1. Synthèse de l'année.
     let revenus = donnees.revenus_annee();

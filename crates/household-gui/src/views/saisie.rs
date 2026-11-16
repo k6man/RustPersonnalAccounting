@@ -235,22 +235,24 @@ impl UiState {
         _comptes: &[InfoCompte],
         _payees: &[(String, usize)],
     ) -> Option<Action> {
-        // Si le champ actif est un TextInput, on lui délègue d'abord.
-        // Les touches de commande (+, ×, e, Entrée, Échap) ne sont pas
-        // transmises au TextInput.
+        // '+' ajoute une ligne de posting depuis n'importe quel champ
+        // (raccourci global de l'écran) ; dans un champ texte, les autres
+        // lettres — y compris e, x, q, r — sont du texte.
+        if key.code == KeyCode::Char('+') {
+            self.brouillon.lignes.push(LigneBrouillon::default());
+            self.posting_selectionne = self.brouillon.lignes.len() - 1;
+            self.champ_actif = Champ::Postings;
+            return None;
+        }
+
         let input_consomme = if matches!(
             self.champ_actif,
             Champ::Date | Champ::Tiers | Champ::Libelle | Champ::Tags | Champ::Liens
-        ) && !matches!(
-            key.code,
-            KeyCode::Char('+')
-                | KeyCode::Char('×')
-                | KeyCode::Char('x')
-                | KeyCode::Char('e')
-                | KeyCode::Enter
-                | KeyCode::Esc
         ) {
-            self.input_actif().on_key(key)
+            match key.code {
+                KeyCode::Tab | KeyCode::Enter | KeyCode::Esc => false,
+                _ => self.input_actif().on_key(key),
+            }
         } else {
             false
         };
@@ -321,15 +323,15 @@ impl UiState {
                 None
             }
             KeyCode::Esc => Some(Action::Annuler),
-            KeyCode::Char('\n') => Some(Action::Enregistrer),
             _ => None,
         }
     }
 }
 
-/// Dessine l'écran saisie.
+/// Dessine l'écran saisie dans la zone `area`.
 pub fn afficher(
     f: &mut Frame,
+    area: Rect,
     etat: &mut UiState,
     _comptes: &[InfoCompte],
     _payees: &[(String, usize)],
@@ -343,7 +345,7 @@ pub fn afficher(
             Constraint::Min(0),    // lignes de postings
             Constraint::Length(3), // équilibrage
         ])
-        .split(f.size());
+        .split(area);
 
     // 1. En-tête de la transaction.
     let b = &etat.brouillon;
@@ -419,16 +421,22 @@ pub fn afficher(
     .column_spacing(1);
     f.render_widget(tableau, chunks[2]);
 
-    // Enregistrer les zones cliquables des lignes de postings.
+    // Enregistrer les zones cliquables des lignes de postings. La première
+    // rangée de données est 2 lignes sous le haut du bloc : bordure + en-tête.
     for (i, ligne) in etat.brouillon.lignes.iter().enumerate() {
         if !ligne.compte.is_empty() {
-            let ligne_y = chunks[2].top() + 1 + i as u16; // +1 pour la bordure du tableau
+            let ligne_y = chunks[2].top() + 2 + i as u16;
             if ligne_y >= chunks[2].bottom() {
                 break;
             }
             zones_cliquables.push((
-                Rect::new(chunks[2].left() + 4, ligne_y, chunks[2].width - 8, 1),
-                ActionClique::SaisieNouveau,
+                Rect::new(
+                    chunks[2].left() + 4,
+                    ligne_y,
+                    chunks[2].width.saturating_sub(8),
+                    1,
+                ),
+                ActionClique::SaisieSelection(i),
             ));
         }
     }
@@ -456,34 +464,6 @@ pub fn afficher(
         Style::default().fg(Color::Red)
     });
     f.render_widget(equilibrage, chunks[3]);
-
-    None
-}
-
-/// Gère un événement souris pour l'écran saisie.
-///
-/// Retourne une `Action` si l'utilisateur a cliqué sur un élément
-/// interactif (ligne de posting), `None` sinon.
-pub fn on_mouse(mouse: crossterm::event::MouseEvent, etat: &mut UiState) -> Option<Action> {
-    use crossterm::event::MouseEventKind;
-
-    if mouse.kind != MouseEventKind::Down(crossterm::event::MouseButton::Left) {
-        return None;
-    }
-
-    // Les lignes de postings commencent après l'en-tête (7 lignes) et les
-    // métadonnées (3 lignes), soit à partir de y = 10 environ.
-    if mouse.row < 11 {
-        return None;
-    }
-
-    let ligne_cliquee = (mouse.row as usize) - 11;
-    if let Some(ligne) = etat.brouillon.lignes.get(ligne_cliquee)
-        && !ligne.compte.is_empty()
-    {
-        etat.posting_selectionne = ligne_cliquee;
-        etat.champ_actif = Champ::Postings;
-    }
 
     None
 }

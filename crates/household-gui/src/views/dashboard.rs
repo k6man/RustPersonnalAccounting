@@ -27,9 +27,11 @@ fn couleur_etat(etat: EtatJauge) -> Color {
     }
 }
 
-/// Dessine le tableau de bord.
+/// Dessine le tableau de bord dans la zone `area` (jamais la frame entière :
+/// la barre d'onglets et l'en-tête sont au-dessus).
 pub fn afficher(
     f: &mut Frame,
+    area: Rect,
     donnees: &DashboardData,
     _zones_cliquables: &mut Vec<(Rect, ActionClique)>,
 ) -> Option<ActionDashboard> {
@@ -41,7 +43,7 @@ pub fn afficher(
             Constraint::Length(3),  // patrimoine net
             Constraint::Min(0),     // budget vs réel + courbe
         ])
-        .split(f.size());
+        .split(area);
 
     // 1. Soldes des comptes clés.
     let soldes = vec![
@@ -74,8 +76,11 @@ pub fn afficher(
                 EtatJauge::Depassement => "DEPASSEMENT",
             };
             let couleur = couleur_etat(jauge.etat);
-            let nom = if jauge.compte.len() > 20 {
-                format!("{}&...", &jauge.compte[..17])
+            let nom = if jauge.compte.chars().count() > 20 {
+                // Troncature sûre : couper sur frontière de caractère
+                // (un slice d'octets paniquerait sur un compte accentué).
+                let tronque: String = jauge.compte.chars().take(17).collect();
+                format!("{tronque}...")
             } else {
                 jauge.compte.clone()
             };

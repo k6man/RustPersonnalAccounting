@@ -82,9 +82,10 @@ impl UiState {
     }
 }
 
-/// Dessine l'écran git.
+/// Dessine l'écran git dans la zone `area`.
 pub fn afficher(
     f: &mut Frame,
+    area: Rect,
     git: &GitDonnees,
     etat: &mut UiState,
     zones_cliquables: &mut Vec<(Rect, ActionClique)>,
@@ -97,7 +98,7 @@ pub fn afficher(
             Constraint::Length(3), // bouton commit
             Constraint::Min(0),    // historique
         ])
-        .split(f.size());
+        .split(area);
 
     // 1. Résumé du diff.
     let resume = &git.resume;
@@ -119,11 +120,9 @@ pub fn afficher(
     } else {
         Style::default()
     };
-    let message_block = Block::default().borders(Borders::ALL).title(format!(
-        " {} (valeur suggérée : {}) ",
-        etat.champ_actif.label(),
-        git.message_suggere
-    ));
+    let message_block = Block::default()
+        .borders(Borders::ALL)
+        .title(" Message de commit ");
     let message_paragraph = Paragraph::new(etat.message.value.as_str())
         .block(message_block)
         .style(style_message);
@@ -131,6 +130,7 @@ pub fn afficher(
 
     // 3. Bouton commit.
     let commit_disponible = resume.fichiers > 0;
+    let message_saisi = !etat.message.value.trim().is_empty();
     let commit_style = if etat.champ_actif == ChampGit::Commit && commit_disponible {
         Style::default()
             .bg(Color::Green)
@@ -153,7 +153,22 @@ pub fn afficher(
     .style(commit_style);
     f.render_widget(bouton_commit, chunks[2]);
 
-    // 4. Historique des commits (filtré sur le ledger).
+    // Zone cliquable du bouton : l'action capture le message affiché (les
+    // zones sont reconstruites à chaque frame, donc toujours à jour).
+    if commit_disponible && message_saisi {
+        let zone = Rect::new(
+            chunks[2].left() + 1,
+            chunks[2].top() + 1,
+            chunks[2].width.saturating_sub(2),
+            1,
+        );
+        zones_cliquables.push((
+            zone,
+            ActionClique::GitCommit(etat.message.value.trim().to_string()),
+        ));
+    }
+
+    // 4. Historique des commits (filtré sur le ledger) — lecture seule.
     if git.disponible && !git.historique.is_empty() {
         let rows: Vec<Row> = git
             .historique
@@ -188,18 +203,6 @@ pub fn afficher(
         )
         .column_spacing(1);
         f.render_widget(tableau, chunks[3]);
-
-        // Enregistrer les zones cliquables des lignes de l'historique.
-        for (i, _commit) in git.historique.iter().enumerate().take(15) {
-            let ligne_y = chunks[3].top() + 1 + i as u16;
-            if ligne_y >= chunks[3].bottom() {
-                break;
-            }
-            zones_cliquables.push((
-                Rect::new(chunks[3].left() + 1, ligne_y, chunks[3].width - 2, 1),
-                ActionClique::GraphiquesOnglet(i),
-            ));
-        }
     } else if git.disponible {
         let vide = Paragraph::new("Aucun commit dans l'historique du ledger.")
             .block(Block::default().borders(Borders::ALL).title(" Historique "))
@@ -214,71 +217,37 @@ pub fn afficher(
 pub fn on_key(key: KeyEvent, etat: &mut UiState) -> Option<ActionGit> {
     use crossterm::event::KeyCode;
 
-    // Délégation au TextInput si le champ message est actif.
+    // Délégation au TextInput si le champ message est actif : la touche
+    // consommée devient Aucun (et non None) pour signaler à l'app que la
+    // frappe est du texte — pas une commande globale (q, r…).
     if etat.champ_actif == ChampGit::Message && etat.message.on_key(key) {
-        return None;
+        return Some(ActionGit::Aucun);
     }
 
     match key.code {
         KeyCode::Tab => {
             etat.champ_actif = etat.champ_actif.suivant();
-            None
+            Some(ActionGit::Aucun)
         }
         KeyCode::Char('t') => {
             etat.champ_actif = etat.champ_actif.precedent();
-            None
+            Some(ActionGit::Aucun)
         }
         KeyCode::Enter => match etat.champ_actif {
             ChampGit::Commit => {
-                let resume_fichiers = etat.message.value.trim().to_string();
-                if !resume_fichiers.is_empty() {
-                    Some(ActionGit::Commit(resume_fichiers))
+                let message = etat.message.value.trim().to_string();
+                if !message.is_empty() {
+                    Some(ActionGit::Commit(message))
                 } else {
-                    None
+                    Some(ActionGit::Aucun)
                 }
             }
             ChampGit::Message => {
                 etat.champ_actif = ChampGit::Commit;
-                None
+                Some(ActionGit::Aucun)
             }
         },
         KeyCode::Char('r') => Some(ActionGit::Actualiser),
-        KeyCode::Esc => None,
         _ => None,
     }
-}
-
-/// Gère un événement souris pour le Git.
-///
-/// Retourne une `ActionGit` si l'utilisateur a cliqué sur le bouton de commit
-/// ou sur une ligne de l'historique, `None` sinon.
-pub fn on_mouse(mouse: crossterm::event::MouseEvent, etat: &mut UiState) -> Option<ActionGit> {
-    use crossterm::event::MouseEventKind;
-
-    if mouse.kind != MouseEventKind::Down(crossterm::event::MouseButton::Left) {
-        return None;
-    }
-
-    // Clic sur le bouton commit (y = 5 environ, après résumé et message).
-    if mouse.row == 6 && mouse.column > 2 && mouse.column < 20 {
-        return Some(ActionGit::Commit(etat.message.value.trim().to_string()));
-    }
-
-    // Clic sur une ligne de l'historique (y >= 10 environ).
-    if mouse.row >= 10 && !git_disponible_is_empty(mouse) {
-        let ligne_cliquee = (mouse.row as usize) - 10;
-        // On ne fait rien de particulier pour l'instant, juste sélectionner
-        // la ligne. Le historique est affiché en lecture seule.
-        let _ = ligne_cliquee;
-    }
-
-    None
-}
-
-/// Vérifie s'il y a de l'historique à afficher.
-fn git_disponible_is_empty(_mouse: crossterm::event::MouseEvent) -> bool {
-    // Cette fonction est un placeholder ; la logique réelle vérifierait
-    // si git.historique est vide. Pour l'instant, on retourne toujours false
-    // pour permettre le clic sur les lignes.
-    false
 }

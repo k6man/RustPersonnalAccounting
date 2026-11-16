@@ -16,6 +16,7 @@ use ratatui::layout::Rect;
 use rust_decimal::Decimal;
 
 use household_budget::BudgetGrid;
+use household_gui::app::{titres_onglets, zones_onglets};
 use household_gui::viewmodel::{
     BudgetVsReel, CascadeAnnee, GraphesData, LigneJournal, PostingVue, RapportsData, UiData,
 };
@@ -251,8 +252,43 @@ fn journal_render_ne_panique_pas() {
     etat.set_selection(0);
 
     render_safe(buffer_rect(), |frame| {
-        journal::afficher(frame, &donnees.journal, &mut etat, &mut Vec::new());
+        journal::afficher(
+            frame,
+            buffer_rect(),
+            &donnees.journal,
+            &mut etat,
+            &mut Vec::new(),
+        );
     });
+}
+
+#[test]
+fn journal_zones_lignes_apres_en_tete() {
+    let donnees = donnees_test();
+    let mut etat = journal::UiState::new();
+    etat.set_selection(0);
+
+    let area = buffer_rect();
+    let mut zones = Vec::new();
+    render_safe(area, |frame| {
+        journal::afficher(frame, area, &donnees.journal, &mut etat, &mut zones);
+    });
+
+    // Deux transactions affichées → deux zones.
+    assert_eq!(zones.len(), 2, "une zone par ligne affichée : {zones:?}");
+    // La première rangée de données est 6 lignes sous le haut de l'area :
+    // panneau info (3) + bordure (1) + en-tête (1) + marge d'en-tête (1).
+    assert_eq!(zones[0].0.y, area.y + 6, "zone à cheval sur l'en-tête");
+    assert_eq!(zones[0].0.y + 1, zones[1].0.y, "zones contiguës");
+    // Les zones portent les index de transaction, pas les positions.
+    assert_eq!(
+        zones[0].1,
+        household_gui::app::ActionClique::JournalLigne(0)
+    );
+    assert_eq!(
+        zones[1].1,
+        household_gui::app::ActionClique::JournalLigne(1)
+    );
 }
 
 // ----------------------------------------------------------------- Saisie ---
@@ -312,6 +348,36 @@ fn saisie_edite_champ_libelle() {
         &donnees.payees,
     );
     assert_eq!(etat.brouillon.libelle, "T");
+}
+
+#[test]
+fn saisie_saisit_les_lettres_commandes_dans_un_champ_texte() {
+    // Régression : e, x, q, r étaient interceptés comme commandes même
+    // dans les champs texte — impossible de taper « Boulangerie ».
+    // ('+' reste un raccourci global d'ajout de posting, testé à part.)
+    let donnees = donnees_test();
+    let mut etat = saisie::UiState::nouveau("2026-03-15".parse().unwrap());
+    for _ in 0..3 {
+        etat.on_key(
+            key(KeyCode::Tab, KeyModifiers::NONE),
+            &donnees.comptes,
+            &donnees.payees,
+        );
+    }
+    for c in "Boulangeriexqr".chars() {
+        etat.on_key(
+            key(KeyCode::Char(c), KeyModifiers::NONE),
+            &donnees.comptes,
+            &donnees.payees,
+        );
+    }
+    assert_eq!(etat.brouillon.libelle, "Boulangeriexqr");
+    assert_eq!(
+        etat.champ_actif,
+        saisie::Champ::Libelle,
+        "pas de saut de champ"
+    );
+    assert_eq!(etat.brouillon.lignes.len(), 0, "pas de posting ajouté");
 }
 
 #[test]
@@ -385,6 +451,7 @@ fn saisie_render_ne_panique_pas() {
     render_safe(buffer_rect(), |frame| {
         saisie::afficher(
             frame,
+            buffer_rect(),
             &mut etat,
             &donnees.comptes,
             &donnees.payees,
@@ -402,7 +469,14 @@ fn budget_affiche_sans_panique() {
 
     let _grille = Some(&donnees.grilles[&2026]);
     render_safe(buffer_rect(), |frame| {
-        budget::afficher(frame, _grille, &mut etat, &|_| false, &mut Vec::new());
+        budget::afficher(
+            frame,
+            buffer_rect(),
+            _grille,
+            &mut etat,
+            &|_| false,
+            &mut Vec::new(),
+        );
     });
 }
 
@@ -475,7 +549,7 @@ fn graphiques_render_ne_panique_pas() {
     let mut etat = graphiques::UiState::nouveau();
 
     render_safe(buffer_rect(), |frame| {
-        graphiques::afficher(frame, &_donnees, &mut etat, &mut Vec::new());
+        graphiques::afficher(frame, buffer_rect(), &_donnees, &mut etat, &mut Vec::new());
     });
 }
 
@@ -485,9 +559,13 @@ fn graphiques_render_ne_panique_pas() {
 fn git_edite_message_et_commite() {
     let mut etat = git::UiState::nouveau();
 
-    // Tape dans le message de commit.
+    // Tape dans le message de commit (champ Message actif) : la frappe est
+    // consommée (Aucun), jamais relâchée vers les commandes globales.
     let action = git::on_key(key(KeyCode::Char('M'), KeyModifiers::NONE), &mut etat);
-    assert!(action.is_none());
+    assert!(
+        matches!(action, Some(git::ActionGit::Aucun)),
+        "frappe dans le message consommée : {action:?}"
+    );
     assert_eq!(etat.message.value, "M");
 
     // Entrée sur le champ Commit retourne Commit.
@@ -520,6 +598,75 @@ fn git_render_ne_panique_pas() {
     let mut etat = git::UiState::nouveau();
 
     render_safe(buffer_rect(), |frame| {
-        git::afficher(frame, &git, &mut etat, &mut Vec::new());
+        git::afficher(frame, buffer_rect(), &git, &mut etat, &mut Vec::new());
     });
+}
+
+// ------------------------------------------------- Cohérence clic / rendu ---
+
+#[test]
+fn onglets_zones_largeurs_reelles() {
+    // Régression : les zones de clic étaient découpées en parts égales
+    // alors que le rendu proportionne chaque onglet à son libellé — les
+    // clics sélectionnaient le mauvais onglet.
+    let titres = titres_onglets();
+    assert_eq!(titres.len(), 7);
+
+    let area = buffer_rect();
+    let zones = zones_onglets(&titres, area);
+    assert_eq!(
+        zones.len(),
+        7,
+        "tous les onglets tiennent dans 120 colonnes"
+    );
+
+    // Largeurs proportionnelles aux libellés, donc inégales…
+    let largeur_0 = zones[0].0.width;
+    let largeur_1 = zones[1].0.width;
+    assert_ne!(
+        largeur_0, largeur_1,
+        "« Tableau de bord » et « Journal » n'ont pas la même largeur"
+    );
+    assert!(largeur_0 > largeur_1);
+
+    // …contiguës, alignées sur la ligne d'onglets, dans l'aire.
+    let mut x = area.x;
+    for (i, (zone, index)) in zones.iter().enumerate() {
+        assert_eq!(zone.y, area.y, "onglets sur la première ligne");
+        assert_eq!(zone.x, x, "zones contiguës sans chevauchement");
+        assert!(zone.right() <= area.right());
+        assert_eq!(*index, i, "zone i ↔ onglet i");
+        x = zone.right() + 1; // + barre verticale de séparation
+    }
+}
+
+#[test]
+fn onglets_clic_renomme_le_bon_onglet() {
+    // Le point médian de chaque zone doit résoudre vers l'onglet rendu à
+    // cette position (particulièrement les onglets fins comme « 7 Git »,
+    // écrasés par la découpe en parts égales).
+    let titres = titres_onglets();
+    let area = buffer_rect();
+    let zones = zones_onglets(&titres, area);
+
+    for (zone, index) in &zones {
+        let point = ratatui::layout::Position {
+            x: zone.x + zone.width / 2,
+            y: zone.y,
+        };
+        assert!(
+            zone.contains(point),
+            "le centre de la zone {index} est dedans"
+        );
+        // L'onglet attendu à ce x est bien celui de la zone : aucun autre
+        // onglet ne doit contenir le point (pas de recouvrement).
+        for (autre, autre_index) in &zones {
+            if autre_index != index {
+                assert!(
+                    !autre.contains(point),
+                    "point de l'onglet {index}capturé par l'onglet {autre_index}"
+                );
+            }
+        }
+    }
 }

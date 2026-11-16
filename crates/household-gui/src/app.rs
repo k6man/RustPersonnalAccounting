@@ -11,7 +11,8 @@ use ratatui::{
     backend::Backend,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
-    widgets::{Block, Borders, List, ListItem, Paragraph, Tabs},
+    text::{Line, Span},
+    widgets::{Block, Borders, List, ListItem, Paragraph},
 };
 
 use household_core::ResolutionLedger;
@@ -107,29 +108,18 @@ pub struct App {
 }
 
 /// Action déclenchée par un clic souris sur une zone cliquable.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ActionClique {
     /// Changer d'onglet (index dans Onglet::TOUS).
     ChangerOnglet(usize),
     /// Sélectionner une ligne du journal (index dans donnees.journal.lignes).
     JournalLigne(usize),
-    /// Écrire dans la saisie (nouveau brouillon).
-    SaisieNouveau,
-    /// Modifier une transaction existante (index dans donnees.journal.lignes).
-    SaisieModifier(usize),
-    /// Modifier une cellule budgétaire.
-    BudgetCellule {
-        annee: i16,
-        date: rustledger_core::NaiveDate,
-        compte: String,
-        montant: rust_decimal::Decimal,
-    },
-    /// Basculer le rollover d'une famille.
-    BudgetRollover(String),
+    /// Sélectionner une ligne de postings dans la saisie.
+    SaisieSelection(usize),
+    /// Sélectionner une ligne de la grille budgétaire.
+    BudgetLigne(usize),
     /// Changer l'onglet des graphiques.
     GraphiquesOnglet(usize),
-    /// Basculer année/mois dans les graphiques.
-    GraphiquesBascule,
     /// Valider un commit git.
     GitCommit(String),
     /// Recharger le statut git.
@@ -245,70 +235,40 @@ impl App {
         self.en_chargement = false;
     }
 
-    fn on_key(&mut self, key: KeyEvent) -> bool {
-        match key.code {
-            KeyCode::Char('q') | KeyCode::Esc => return true,
-            KeyCode::Char('r') => {
-                self.demander_rechargement();
-                return false;
-            }
-            KeyCode::Char('l') => {
-                self.params_ledger = !self.params_ledger;
-                return false;
-            }
-            _ => {}
+    /// Change d'écran, avec le cas particulier Git (recharge le statut).
+    fn changer_ecran(&mut self, index: usize) {
+        self.ecran_actif = index;
+        if Onglet::TOUS[index] == Onglet::Git {
+            self.en_chargement = true;
+            self.flash = None;
+            self.cmd_tx.send(Command::GitStatut).ok();
         }
+    }
 
-        if key.modifiers == KeyModifiers::CONTROL
+    fn on_key(&mut self, key: KeyEvent) -> bool {
+        // Ctrl+1..7 : changement d'écran direct, prioritaire sur tout
+        // (marche aussi depuis un formulaire).
+        if key.modifiers.contains(KeyModifiers::CONTROL)
             && let KeyCode::Char(c) = key.code
             && let Some(digit) = c.to_digit(10)
+            && digit >= 1
         {
-            let index = digit as usize - 1;
+            let index = (digit - 1) as usize;
             if index < Onglet::TOUS.len() {
-                self.ecran_actif = index;
-                let onglet = Onglet::TOUS[index];
-                if onglet == Onglet::Git {
-                    self.en_chargement = true;
-                    self.flash = None;
-                    self.cmd_tx.send(Command::GitStatut).ok();
-                }
-                return false;
+                self.changer_ecran(index);
             }
+            return false;
+        }
+        // Ctrl+C : quitter (convention terminal).
+        if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('c') {
+            return true;
         }
 
-        // Délégation vers la vue active pour les touches spécifiques au
-        // contexte (flèches, Entrée, Suppr…). L'emprunt de donnees est limité
-        // à un bloc pour pouvoir modifier self ensuite.
-        let action = {
-            let donnees = self.donnees.as_ref();
-            match donnees {
-                Some(d) => {
-                    let nb = d.journal.lignes.len();
-                    crate::views::journal::on_key(key, &mut self.journal, nb)
-                }
-                None => None,
-            }
-        };
-
-        match action {
-            Some(crate::views::journal::ActionJournal::Modifier(index)) => {
-                let donnees = self.donnees.as_ref();
-                if let Some(ligne) = donnees
-                    .and_then(|d| d.journal.lignes.iter().find(|l| l.index == index).cloned())
-                {
-                    self.saisie = crate::views::saisie::UiState::modification(&ligne);
-                    self.ecran_actif = Onglet::Saisie.index();
-                }
-            }
-            Some(crate::views::journal::ActionJournal::Supprimer(index)) => {
-                self.demander_suppression(index);
-            }
-            _ => {}
-        }
-
-        // Délégation vers la vue Saisie pour l'édition des champs.
-        if self.ecran_actif == Onglet::Saisie.index()
-            && let Some(action) = self.saisie.on_key(
+        // Délégation par écran actif. Les écrans avec champ texte (Saisie,
+        // Git) consomment TOUTES les touches : les lettres q/r/l y sont du
+        // texte, pas des commandes globales.
+        if self.ecran_actif == Onglet::Saisie.index() {
+            let action = self.saisie.on_key(
                 key,
                 self.donnees
                     .as_ref()
@@ -318,41 +278,22 @@ impl App {
                     .as_ref()
                     .map(|d| d.payees.as_slice())
                     .unwrap_or(&[]),
-            )
-        {
+            );
             match action {
-                crate::views::saisie::Action::Enregistrer => {
+                Some(crate::views::saisie::Action::Enregistrer) => {
                     self.envoyer_brouillon();
                 }
-                crate::views::saisie::Action::Annuler => {
+                Some(crate::views::saisie::Action::Annuler) => {
                     self.saisie =
                         crate::views::saisie::UiState::nouveau(crate::worker::aujourd_hui());
                     self.saisie_en_vol = false;
                     self.ecran_actif = Onglet::Journal.index();
                 }
-                crate::views::saisie::Action::Aucun => {}
+                Some(crate::views::saisie::Action::Aucun) | None => {}
             }
+            return false;
         }
 
-        // Délégation vers la vue Graphiques pour les touches de navigation
-        // entre mini-onglets (flèches gauche/droite, 1/2/3, t pour basculer
-        // année/mois).
-        if self.ecran_actif == Onglet::Graphiques.index()
-            && let Some(action) = crate::views::graphiques::on_key(key, &mut self.graphiques)
-        {
-            match action {
-                crate::views::graphiques::ActionGraphiques::ChangerOnglet(n) => {
-                    self.graphiques.onglet = n;
-                }
-                crate::views::graphiques::ActionGraphiques::BasculeRepartition => {
-                    self.graphiques.bascule_repartition();
-                }
-                crate::views::graphiques::ActionGraphiques::Aucun => {}
-            }
-        }
-
-        // Délégation vers la vue Git pour les touches (flèches, 1/2/3, t,
-        // Entrée pour commiter, r pour actualiser).
         if self.ecran_actif == Onglet::Git.index()
             && let Some(action) = crate::views::git::on_key(key, &mut self.git)
         {
@@ -369,12 +310,68 @@ impl App {
                 }
                 crate::views::git::ActionGit::Aucun => {}
             }
+            return false;
+        }
+
+        if self.ecran_actif == Onglet::Graphiques.index()
+            && let Some(action) = crate::views::graphiques::on_key(key, &mut self.graphiques)
+        {
+            match action {
+                crate::views::graphiques::ActionGraphiques::ChangerOnglet(n) => {
+                    self.graphiques.onglet = n;
+                }
+                crate::views::graphiques::ActionGraphiques::BasculeRepartition => {
+                    self.graphiques.bascule_repartition();
+                }
+                crate::views::graphiques::ActionGraphiques::Aucun => {}
+            }
+            return false;
+        }
+
+        // Journal : flèches/Entrée/Suppr. La sélection navigue dans les
+        // MAX_LIGNES lignes affichées, pas dans tout l'historique. Les autres
+        // touches tombent dans les commandes globales ci-dessous.
+        if self.ecran_actif == Onglet::Journal.index()
+            && matches!(
+                key.code,
+                KeyCode::Up | KeyCode::Down | KeyCode::Enter | KeyCode::Delete | KeyCode::Backspace
+            )
+        {
+            let nb = self
+                .donnees
+                .as_ref()
+                .map_or(0, |d| d.journal.lignes.len().min(journal::MAX_LIGNES));
+            match journal::on_key(key, &mut self.journal, nb) {
+                Some(journal::ActionJournal::Modifier(index)) => {
+                    let ligne = self
+                        .donnees
+                        .as_ref()
+                        .and_then(|d| d.journal.lignes.iter().find(|l| l.index == index).cloned());
+                    if let Some(ligne) = ligne {
+                        self.saisie = crate::views::saisie::UiState::modification(&ligne);
+                        self.ecran_actif = Onglet::Saisie.index();
+                    }
+                }
+                Some(journal::ActionJournal::Supprimer(index)) => {
+                    self.demander_suppression(index);
+                }
+                Some(journal::ActionJournal::Aucun) | None => {}
+            }
+            return false;
+        }
+
+        // Commandes globales (hors écrans à champ texte).
+        match key.code {
+            KeyCode::Char('q') | KeyCode::Esc => return true,
+            KeyCode::Char('r') => self.demander_rechargement(),
+            KeyCode::Char('l') => self.params_ledger = !self.params_ledger,
+            _ => {}
         }
 
         false
     }
 
-    fn on_mouse(&mut self, mouse: MouseEvent) -> bool {
+    fn on_mouse(&mut self, mouse: MouseEvent) {
         use crossterm::event::MouseEventKind;
 
         if let MouseEventKind::Down(MouseButton::Left) = mouse.kind {
@@ -388,73 +385,26 @@ impl App {
                     let action = action.clone();
                     match action {
                         ActionClique::ChangerOnglet(n) => {
-                            self.ecran_actif = n;
-                            let onglet = Onglet::TOUS[n];
-                            if onglet == Onglet::Git {
-                                self.en_chargement = true;
-                                self.flash = None;
-                                self.cmd_tx.send(Command::GitStatut).ok();
-                            }
+                            self.changer_ecran(n);
                         }
                         ActionClique::JournalLigne(index) => {
-                            let donnees = self.donnees.as_ref();
-                            if let Some(ligne) = donnees.and_then(|d| {
+                            let ligne = self.donnees.as_ref().and_then(|d| {
                                 d.journal.lignes.iter().find(|l| l.index == index).cloned()
-                            }) {
+                            });
+                            if let Some(ligne) = ligne {
                                 self.saisie = crate::views::saisie::UiState::modification(&ligne);
                                 self.ecran_actif = Onglet::Saisie.index();
                             }
                         }
-                        ActionClique::SaisieNouveau => {}
-                        ActionClique::SaisieModifier(index) => {
-                            let donnees = self.donnees.as_ref();
-                            if let Some(ligne) = donnees.and_then(|d| {
-                                d.journal.lignes.iter().find(|l| l.index == index).cloned()
-                            }) {
-                                self.saisie = crate::views::saisie::UiState::modification(&ligne);
-                                self.ecran_actif = Onglet::Saisie.index();
-                            }
+                        ActionClique::SaisieSelection(index) => {
+                            self.saisie.posting_selectionne = index;
+                            self.saisie.champ_actif = crate::views::saisie::Champ::Postings;
                         }
-                        ActionClique::BudgetCellule {
-                            annee,
-                            date,
-                            compte,
-                            montant,
-                        } => {
-                            self.en_chargement = true;
-                            self.flash = None;
-                            self.cmd_tx
-                                .send(Command::CelluleBudget {
-                                    annee,
-                                    date,
-                                    compte,
-                                    montant,
-                                })
-                                .ok();
-                        }
-                        ActionClique::BudgetRollover(famille) => {
-                            match self.config.basculer_rollover(&famille) {
-                                Ok(()) => {
-                                    self.flash = Some((
-                                        format!(
-                                            "rollover {} — préférence enregistrée",
-                                            if self.config.rollover_actif(&famille) {
-                                                "activé"
-                                            } else {
-                                                "désactivé"
-                                            }
-                                        ),
-                                        false,
-                                    ));
-                                }
-                                Err(e) => self.flash = Some((e, true)),
-                            }
+                        ActionClique::BudgetLigne(index) => {
+                            self.budget.ligne_selectionne = index;
                         }
                         ActionClique::GraphiquesOnglet(n) => {
                             self.graphiques.onglet = n;
-                        }
-                        ActionClique::GraphiquesBascule => {
-                            self.graphiques.bascule_repartition();
                         }
                         ActionClique::GitCommit(message) => {
                             self.en_chargement = true;
@@ -468,12 +418,10 @@ impl App {
                         }
                         ActionClique::Aucun => {}
                     }
-                    return false; // Un seul clic traité à la fois
+                    return; // Un seul clic traité à la fois
                 }
             }
         }
-
-        false
     }
 
     #[expect(dead_code)]
@@ -654,7 +602,7 @@ impl App {
             .direction(Direction::Vertical)
             .constraints([
                 Constraint::Length(1), // onglets (une ligne)
-                Constraint::Length(6), // en-tête (soldes, jauges, patrimoine)
+                Constraint::Length(4), // en-tête (badge exemple, chemin)
                 Constraint::Min(0),    // contenu
                 Constraint::Length(1), // flash
             ])
@@ -668,14 +616,6 @@ impl App {
 
     fn dessine_entete(&self, f: &mut Frame, area: ratatui::layout::Rect) {
         let mut lignes: Vec<ListItem> = vec![];
-
-        lignes.push(
-            ListItem::new(" Comptabilité du foyer ").style(
-                Style::default()
-                    .fg(Color::Yellow)
-                    .add_modifier(Modifier::BOLD),
-            ),
-        );
 
         if self.resolu.mode.est_exemple() {
             lignes.push(
@@ -724,11 +664,17 @@ impl App {
 
         match Onglet::TOUS[self.ecran_actif] {
             Onglet::TableauDeBord => {
-                dashboard::afficher(f, &donnees.tableau_de_bord, &mut self.zones_cliquables);
+                dashboard::afficher(
+                    f,
+                    area,
+                    &donnees.tableau_de_bord,
+                    &mut self.zones_cliquables,
+                );
             }
             Onglet::Journal => {
                 journal::afficher(
                     f,
+                    area,
                     &donnees.journal,
                     &mut self.journal,
                     &mut self.zones_cliquables,
@@ -737,6 +683,7 @@ impl App {
             Onglet::Saisie => {
                 saisie::afficher(
                     f,
+                    area,
                     &mut self.saisie,
                     &donnees.comptes,
                     &donnees.payees,
@@ -746,6 +693,7 @@ impl App {
             Onglet::Budget => {
                 budget::afficher(
                     f,
+                    area,
                     donnees.grilles.get(&self.budget.annee),
                     &mut self.budget,
                     &|famille| self.config.rollover_actif(famille),
@@ -753,14 +701,20 @@ impl App {
                 );
             }
             Onglet::Rapports => {
-                rapports::afficher(f, &donnees.rapports, &mut self.zones_cliquables);
+                rapports::afficher(f, area, &donnees.rapports, &mut self.zones_cliquables);
             }
             Onglet::Graphiques => {
-                graphiques::afficher(f, donnees, &mut self.graphiques, &mut self.zones_cliquables);
+                graphiques::afficher(
+                    f,
+                    area,
+                    donnees,
+                    &mut self.graphiques,
+                    &mut self.zones_cliquables,
+                );
             }
             Onglet::Git => match &self.git_donnees {
                 Some(git) => {
-                    git::afficher(f, git, &mut self.git, &mut self.zones_cliquables);
+                    git::afficher(f, area, git, &mut self.git, &mut self.zones_cliquables);
                 }
                 None => {
                     let paragraphe = Paragraph::new("Chargement des données Git…")
@@ -778,62 +732,91 @@ impl App {
         ecran_actif: usize,
         zones_cliquables: &mut Vec<(Rect, ActionClique)>,
     ) {
-        let titres: Vec<String> = Onglet::TOUS
-            .iter()
-            .enumerate()
-            .map(|(i, onglet)| format!(" {ctrl} {nom}", ctrl = i + 1, nom = onglet.libelle()))
-            .collect();
+        let titres = titres_onglets();
 
-        let tabs = Tabs::new(titres)
-            .select(ecran_actif)
-            .style(Style::default().fg(Color::White))
-            .highlight_style(
+        // Zones cliquables calculées avec la MÊME arithmétique que le rendu
+        // ci-dessous : chaque onglet occupe son libellé encadré d'un espace,
+        // séparés par une barre verticale de 1 colonne.
+        for (zone, index) in zones_onglets(&titres, area) {
+            zones_cliquables.push((zone, ActionClique::ChangerOnglet(index)));
+        }
+
+        let mut spans: Vec<Span> = Vec::new();
+        for (i, titre) in titres.iter().enumerate() {
+            let style = if i == ecran_actif {
                 Style::default()
                     .fg(Color::Black)
                     .bg(Color::White)
-                    .add_modifier(Modifier::BOLD),
-            );
-        f.render_widget(tabs, area);
-
-        // Enregistrer les zones cliquables des onglets.
-        // Les onglets sont sur une seule ligne (area.top()), sans bordure.
-        let nb_onglets = Onglet::TOUS.len();
-        let largeur_onglet = area.width as usize / nb_onglets;
-        for (i, _onglet) in Onglet::TOUS.iter().enumerate() {
-            let largeur = if i == nb_onglets - 1 {
-                // Le dernier onglet prend le reste de la largeur pour éviter les arrondis.
-                area.width as usize - i * largeur_onglet
+                    .add_modifier(Modifier::BOLD)
             } else {
-                largeur_onglet
+                Style::default().fg(Color::White)
             };
-            let zone = Rect::new(
-                area.left() + (i * largeur_onglet) as u16,
-                area.top(), // Ligne unique des onglets
-                largeur as u16,
-                1, // Une seule ligne
-            );
-            zones_cliquables.push((zone, ActionClique::ChangerOnglet(i)));
+            spans.push(Span::styled(format!(" {titre} "), style));
+            if i + 1 < titres.len() {
+                spans.push(Span::styled("│", Style::default().fg(Color::DarkGray)));
+            }
         }
+        f.render_widget(Paragraph::new(Line::from(spans)), area);
     }
 
     fn dessine_flash(&self, f: &mut Frame, area: ratatui::layout::Rect) {
+        // Message prioritaire, sinon dernière erreur de chargement. Sans
+        // bordure : la rangée fait 1 ligne, une bordure masquerait le texte.
         if let Some((message, est_erreur)) = &self.flash {
             let style = if *est_erreur {
-                Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)
+                Style::default().fg(Color::White).bg(Color::Red)
             } else {
-                Style::default()
-                    .fg(Color::Green)
-                    .add_modifier(Modifier::BOLD)
+                Style::default().fg(Color::White).bg(Color::Green)
             };
-            let paragraphe = Paragraph::new(format!(" {message} "))
-                .block(Block::default().borders(Borders::ALL))
-                .style(style);
+            let paragraphe = Paragraph::new(format!(" {message} ")).style(style);
             f.render_widget(paragraphe, area);
         } else if let Some(echec) = &self.echec {
             let paragraphe = Paragraph::new(format!(" Erreur : {echec} "))
-                .block(Block::default().borders(Borders::ALL))
-                .style(Style::default().fg(Color::Red));
+                .style(Style::default().bg(Color::Red));
             f.render_widget(paragraphe, area);
         }
     }
+}
+
+/// Libellés des onglets, sans le padding d'affichage — partagé entre le
+/// rendu de la barre d'onglets et les tests de cohérence clic/rendu.
+#[must_use]
+pub fn titres_onglets() -> Vec<String> {
+    Onglet::TOUS
+        .iter()
+        .enumerate()
+        .map(|(i, onglet)| format!("{ctrl} {nom}", ctrl = i + 1, nom = onglet.libelle()))
+        .collect()
+}
+
+/// Zones cliquables des onglets pour une aire d'écran donnée.
+///
+/// Même arithmétique que le rendu de [`App::dessine_barre_ecrans`] : chaque
+/// libellé est encadré d'un espace (padding), onglets séparés par une barre
+/// verticale de 1 colonne. Les onglets tronqués par un écran étroit n'ont
+/// pas de zone (un clic y serait hors rendu de toute façon).
+#[must_use]
+pub fn zones_onglets(titres: &[String], area: Rect) -> Vec<(Rect, usize)> {
+    let mut zones = Vec::new();
+    let mut x = area.left() as usize;
+    let droite = area.right() as usize;
+    for (i, titre) in titres.iter().enumerate() {
+        // Libellés ASCII (conventions du dépôt) : nombre de caractères =
+        // largeur d'affichage.
+        let largeur = titre.chars().count() + 2; // padding 1 colonne de chaque côté
+        if x + largeur > droite {
+            break;
+        }
+        zones.push((
+            Rect::new(
+                x as u16,
+                area.top(),
+                u16::try_from(largeur).unwrap_or(u16::MAX),
+                1,
+            ),
+            i,
+        ));
+        x += largeur + 1; // + la barre verticale de séparation
+    }
+    zones
 }

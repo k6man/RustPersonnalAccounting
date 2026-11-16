@@ -50,9 +50,14 @@ impl UiState {
     }
 }
 
+/// Nombre maximal de lignes affichées (pagination sommaire). La sélection
+/// clavier et les zones de clic sont bornées à ce nombre.
+pub const MAX_LIGNES: usize = 50;
+
 /// Dessine le journal et enregistre les zones cliquables des lignes.
 pub fn afficher(
     f: &mut Frame,
+    area: Rect,
     donnees: &JournalData,
     etat: &mut UiState,
     zones_cliquables: &mut Vec<(Rect, ActionClique)>,
@@ -63,7 +68,7 @@ pub fn afficher(
             Constraint::Length(3), // info
             Constraint::Min(0),    // tableau
         ])
-        .split(f.size());
+        .split(area);
 
     // Info : nombre de lignes.
     let info = Paragraph::new(format!(
@@ -77,7 +82,7 @@ pub fn afficher(
     let rows: Vec<Row> = donnees
         .lignes
         .iter()
-        .take(50) // pagination simple : 50 lignes max
+        .take(MAX_LIGNES)
         .map(|ligne| {
             let compte_str: String = ligne
                 .lignes_posting
@@ -144,9 +149,11 @@ pub fn afficher(
 
     f.render_stateful_widget(tableau, chunks[1], &mut etat.table_state);
 
-    // Enregistrer les zones cliquables des lignes du tableau.
-    for (i, ligne) in donnees.lignes.iter().enumerate().take(50) {
-        let ligne_y = chunks[1].top() + 1 + i as u16; // +1 pour la bordure du tableau
+    // Enregistrer les zones cliquables des lignes du tableau. La première
+    // rangée de données est 3 lignes sous le haut du bloc : bordure, en-tête,
+    // marge basse d'en-tête.
+    for (i, ligne) in donnees.lignes.iter().enumerate().take(MAX_LIGNES) {
+        let ligne_y = chunks[1].top() + 3 + i as u16;
         if ligne_y >= chunks[1].bottom() {
             break;
         }
@@ -200,33 +207,5 @@ pub fn on_key(
             }
         }
         _ => None,
-    }
-}
-
-/// Gère un événement souris pour le journal.
-///
-/// Retourne une `ActionJournal` si l'utilisateur a cliqué sur une ligne.
-pub fn on_mouse(
-    mouse: crossterm::event::MouseEvent,
-    _etat: &mut UiState,
-    nb_lignes: usize,
-) -> Option<ActionJournal> {
-    use crossterm::event::MouseEventKind;
-
-    if mouse.kind != MouseEventKind::Down(crossterm::event::MouseButton::Left) {
-        return None;
-    }
-
-    // Le tableau commence après le panneau info (3 lignes) et sa bordure.
-    // Approximation : la première ligne de données est à y = 4.
-    if mouse.row < 4 {
-        return None;
-    }
-
-    let ligne_cliquee = (mouse.row as usize) - 4;
-    if ligne_cliquee < nb_lignes {
-        Some(ActionJournal::Modifier(ligne_cliquee))
-    } else {
-        None
     }
 }
