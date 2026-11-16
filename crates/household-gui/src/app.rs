@@ -653,7 +653,7 @@ impl App {
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
-                Constraint::Length(3), // onglets (avec bordure)
+                Constraint::Length(1), // onglets (une ligne)
                 Constraint::Length(6), // en-tête (soldes, jauges, patrimoine)
                 Constraint::Min(0),    // contenu
                 Constraint::Length(1), // flash
@@ -786,11 +786,6 @@ impl App {
 
         let tabs = Tabs::new(titres)
             .select(ecran_actif)
-            .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .title(" Écrans (Ctrl+1..7) "),
-            )
             .style(Style::default().fg(Color::White))
             .highlight_style(
                 Style::default()
@@ -801,8 +796,7 @@ impl App {
         f.render_widget(tabs, area);
 
         // Enregistrer les zones cliquables des onglets.
-        // Le widget Tabs avec bordure affiche le texte sur la ligne intérieure
-        // (area.top() + 1), pas sur toute la hauteur de la barre.
+        // Les onglets sont sur une seule ligne (area.top()), sans bordure.
         let nb_onglets = Onglet::TOUS.len();
         let largeur_onglet = area.width as usize / nb_onglets;
         for (i, _onglet) in Onglet::TOUS.iter().enumerate() {
@@ -814,9 +808,9 @@ impl App {
             };
             let zone = Rect::new(
                 area.left() + (i * largeur_onglet) as u16,
-                area.top() + 1, // Ligne intérieure de la bordure du Tabs
+                area.top(), // Ligne unique des onglets
                 largeur as u16,
-                1, // Une seule ligne : celle du texte des onglets
+                1, // Une seule ligne
             );
             zones_cliquables.push((zone, ActionClique::ChangerOnglet(i)));
         }
