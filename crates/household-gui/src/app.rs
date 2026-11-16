@@ -806,13 +806,22 @@ impl App {
         f.render_widget(tabs, area);
 
         // Enregistrer les zones cliquables des onglets.
-        let largeur_onglet = area.width as usize / Onglet::TOUS.len();
+        // Le widget Tabs avec bordure affiche le texte sur la ligne intérieure
+        // (area.top() + 1), pas sur toute la hauteur de la barre.
+        let nb_onglets = Onglet::TOUS.len();
+        let largeur_onglet = area.width as usize / nb_onglets;
         for (i, _onglet) in Onglet::TOUS.iter().enumerate() {
+            let largeur = if i == nb_onglets - 1 {
+                // Le dernier onglet prend le reste de la largeur pour éviter les arrondis.
+                area.width as usize - i * largeur_onglet
+            } else {
+                largeur_onglet
+            };
             let zone = Rect::new(
                 area.left() + (i * largeur_onglet) as u16,
-                area.top(),
-                largeur_onglet as u16,
-                3,
+                area.top() + 1, // Ligne intérieure de la bordure du Tabs
+                largeur as u16,
+                1, // Une seule ligne : celle du texte des onglets
             );
             zones_cliquables.push((zone, ActionClique::ChangerOnglet(i)));
         }
