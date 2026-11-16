@@ -82,6 +82,55 @@ impl TextInput {
         s
     }
 
+    /// Ligne affichable avec le curseur : le caractère sous le curseur est
+    /// rendu inversé (caret) si le champ a le focus — sinon, un bloc plein à
+    /// la fin du texte. Sans focus, la ligne est le texte simple (avec
+    /// placeholder éventuel).
+    ///
+    /// Le texte n'est pas truncaté par `max_width` ici : l'aire de rendu
+    /// clippe déjà (et truncater casserait la correspondance curseur ⇄
+    /// caractère affiché).
+    #[must_use]
+    pub fn ligne_avec_curseur(&self) -> Line<'static> {
+        let style = if self.focused {
+            Style::default()
+                .fg(Color::White)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(Color::Gray)
+        };
+
+        if !self.focused {
+            return Line::from(Span::styled(self.display_text(), style));
+        }
+
+        // Le curseur est un index en octets, toujours sur une frontière de
+        // caractère (maintenu par insert_char/move_*/delete_*).
+        let avant = self.value[..self.cursor].to_string();
+        match self.value[self.cursor..].chars().next() {
+            Some(sous) => {
+                let apres = self.value[self.cursor + sous.len_utf8()..].to_string();
+                let caret = Style::default()
+                    .fg(Color::Black)
+                    .bg(Color::White)
+                    .add_modifier(Modifier::BOLD);
+                Line::from(vec![
+                    Span::styled(avant, style),
+                    Span::styled(sous.to_string(), caret),
+                    Span::styled(apres, style),
+                ])
+            }
+            None => {
+                // Curseur en fin de texte : bloc plein après le texte.
+                let caret = Style::default()
+                    .fg(Color::Black)
+                    .bg(Color::White)
+                    .add_modifier(Modifier::BOLD);
+                Line::from(vec![Span::styled(avant, style), Span::styled(" ", caret)])
+            }
+        }
+    }
+
     /// Insère un caractère à la position du curseur.
     pub fn insert_char(&mut self, c: char) {
         self.value.insert(self.cursor, c);
@@ -189,23 +238,19 @@ impl TextInput {
 
 impl Widget for &TextInput {
     fn render(self, area: Rect, buf: &mut ratatui::buffer::Buffer) {
-        let style = if self.focused {
-            Style::default()
-                .fg(Color::White)
-                .bg(Color::Blue)
-                .add_modifier(Modifier::BOLD)
-        } else {
-            Style::default().fg(Color::Gray)
-        };
-
         let texte = if let Some(label) = &self.label {
-            format!("{} {}", label, self.display_text())
+            format!("{} ", label)
         } else {
-            self.display_text()
+            String::new()
         };
+        let mut ligne = self.ligne_avec_curseur();
+        if !texte.is_empty() {
+            let mut spans = vec![Span::styled(texte, Style::default().fg(Color::Gray))];
+            spans.append(&mut ligne.spans);
+            ligne = Line::from(spans);
+        }
 
-        let paragraph = Paragraph::new(Line::from(Span::styled(texte, style)))
-            .block(Block::default().borders(Borders::NONE));
+        let paragraph = Paragraph::new(ligne).block(Block::default().borders(Borders::NONE));
         paragraph.render(area, buf);
     }
 }

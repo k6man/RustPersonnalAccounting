@@ -197,6 +197,19 @@ impl UiState {
         self.input_liens.cursor = self.input_liens.value.len();
     }
 
+    /// Synchronise le focus des TextInputs avec le champ actif (appelé au
+    /// rendu : `champ_actif` reste la seule source de vérité).
+    fn sync_focus(&mut self) {
+        self.input_date.set_focused(self.champ_actif == Champ::Date);
+        self.input_tiers
+            .set_focused(self.champ_actif == Champ::Tiers);
+        self.input_libelle
+            .set_focused(self.champ_actif == Champ::Libelle);
+        self.input_tags.set_focused(self.champ_actif == Champ::Tags);
+        self.input_liens
+            .set_focused(self.champ_actif == Champ::Liens);
+    }
+
     /// Retourne le TextInput du champ actif.
     pub fn input_actif(&mut self) -> &mut TextInput {
         match self.champ_actif {
@@ -348,10 +361,11 @@ pub fn afficher(
         .split(area);
 
     // 1. En-tête de la transaction.
+    etat.sync_focus();
     let b = &etat.brouillon;
 
     // Champs texte avec focus visuel.
-    let champ_date = Paragraph::new(etat.input_date.value.as_str())
+    let champ_date = Paragraph::new(etat.input_date.ligne_avec_curseur())
         .block(Block::default().borders(Borders::ALL).title(format!(
             " {} (Tab pour naviguer) ",
             etat.champ_actif.label()

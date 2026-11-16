@@ -59,9 +59,26 @@ trouvé : l'arbre de travail contenait une fusion à moitié appliquée
 - Validation : `just check` ✓ (fmt, clippy `-D warnings`, 80 tests,
   `rledger check`).
 
-**Prochaine action : éditeur de cellule budgétaire** (plan détaillé dans
-« À faire », section « Revue TUI — suite »), puis le reste du backlog de la
-revue TUI.
+**Éditeur de cellule budgétaire livré (2026-11-16)** avec le caret dans les
+champs de saisie (pré-requis) :
+
+- [x] **#3 — Caret dans `TextInput`** : `ligne_avec_curseur()` rend le
+  caractère sous le curseur inversé (bloc plein en fin de texte), focus
+  synchronisé au rendu depuis `champ_actif` (`sync_focus` dans Saisie,
+  `set_focused` dans Git) ; les deux écrans rendent désormais la ligne avec
+  caret au lieu d'un `Paragraph` brut sur la valeur. 3 tests.
+- [x] **#1 — Éditeur de cellule budgétaire** : `UiState.edition`
+  (`EditionCellule { ligne, mois, input }`) ; `e` ouvre l'éditeur
+  pré-rempli avec la valeur courante (plus aucune écriture à ce stade) ;
+  Entrée valide (parse `Decimal`, virgule décimale acceptée, cellule rendue
+  rouge tant que le montant est invalide), Esc annule sans écriture ;
+  pendant l'édition toutes les touches vont au champ et sont consommées
+  (comme Saisie/Git). Titre de bloc et aide mis à jour. 7 tests dont la
+  régression « aucun `ActionBudget::Cellule` sans validation explicite ».
+
+**Prochaine action : backlog de la revue TUI** — priorité #2 (saisie
+complète : formulaire visible champ par champ, édition compte/montant des
+postings, bascule du flag).
 
 **Décisions tranchées avec la maîtresse d'ouvrage** : une seule fenêtre « Graphiques »
 avec des mini-onglets internes (pas une fenêtre par graphe) ; trois graphes
@@ -316,14 +333,16 @@ Revue complète du code TUI (apparence, clavier, souris) ; le bloquant
 (armure ne compilait pas) a été réparé le jour même (voir « En cours »).
 Reste, par priorité :
 
-- [ ] **#1 — Éditeur de cellule budgétaire** (P1 — plan détaillé plus bas).
+- [x] **#1 — Éditeur de cellule budgétaire** (P1 — plan détaillé plus bas)
+  (2026-11-16, voir « En cours »).
 - [ ] **#2 — Saisie complète** (P1) : Date/Flag/Tiers/Libellé affichés
   simultanément (aujourd'hui le champ actif écrase tout le bloc en-tête),
   édition compte/montant des postings (`e` n'ouvre aucun éditeur), bascule
   du flag `*`/`!` (aucune touche).
-- [ ] **#3 — Curseur visible dans `TextInput`** (P1) : `focused` jamais mis
-  à `true` (`set_focused` sans appelant), aucun caret rendu (REVERSED sur le
-  caractère sous le curseur, ou `terminal.set_cursor`).
+- [x] **#3 — Curseur visible dans `TextInput`** (P1) (2026-11-16) :
+  `ligne_avec_curseur()` (caret inversé), focus synchronisé au rendu
+  (`sync_focus` Saisie, `set_focused` Git) ; rendus Saisie/Git basculés sur
+  la ligne avec caret.
 - [ ] **#4 — Filtrer `KeyEventKind::Press`** dans `App::run` : sans filtre,
   les terminaux qui émettent Press+Release (Windows) traiteraient chaque
   touche deux fois.
@@ -342,29 +361,9 @@ Reste, par priorité :
   `fenetres_ouvertes`, pièges egui 0.37) alors que le produit est une TUI
   ratatui — mettre à jour la section Architecture.
 
-**Plan #1 — éditeur de cellule budgétaire.** Pré-ébauche déjà dans l'arbre :
-`App::on_key` route les flèches vers l'écran Budget et la gestion de
-`ActionBudget::Cellule` (envoi `Command::CelluleBudget`) est en place ;
-`budget::on_key` a des paramètres `_config`/`_cmd_tx` déjà prévus. Reste :
-
-1. `views/budget.rs` — `UiState.edition: Option<EditionCellule>` avec
-   `struct EditionCellule { ligne: usize, mois: usize, input: TextInput }` ;
-   `e` crée l'édition pré-remplie avec la valeur courante de la cellule.
-2. `budget::on_key` — si `edition.is_some()` : déléguer à `input.on_key`
-   (toutes les touches y vont, comme pour Saisie/Git) ; Entrée → parse
-   `Decimal` → `Some(ActionBudget::Cellule { … })` + `edition = None` ;
-   Esc → `edition = None` sans écriture. Décider du sort des params
-   `_config`/`_cmd_tx` (brancher ou supprimer).
-3. `budget::afficher` — rendre la cellule en édition mise en évidence
-   (caret inclus, cf. #3) et remplacer l'aide « à venir » par les vraies
-   touches (e éditer, Entrée valider, Esc annuler).
-4. `app.rs` — rétablir `self.budget.edition.is_some()` dans
-   `pour_le_budget` (le commentaire actuel le documente).
-5. Tests (`tests/gui_tui.rs`) : ouverture d'édition sur la bonne cellule,
-   validation → `Cellule` avec la bonne (annee, date, compte, montant),
-   annulation sans écriture, montant invalide refusé sans écriture, et
-   une régression : aucun `Command` budgétaire tant que l'édition n'est
-   pas validée explicitement.
+**Plan #1 — éditeur de cellule budgétaire** — **livré le 2026-11-16**
+(l'implémentation suit le plan ; les paramètres `_config`/`_cmd_tx` de
+`budget::on_key` restent à trancher — brancher ou supprimer).
 
 ### Séparation exemple / vrai ledger — restes (jalon 8, 2026-11-07)
 

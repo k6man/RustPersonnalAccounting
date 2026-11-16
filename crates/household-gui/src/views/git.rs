@@ -114,7 +114,10 @@ pub fn afficher(
     .style(Style::default().fg(Color::White));
     f.render_widget(resume_texte, chunks[0]);
 
-    // 2. Zone de saisie du message de commit.
+    // 2. Zone de saisie du message de commit (focus + caret synchronisés au
+    // rendu : `champ_actif` reste la seule source de vérité).
+    etat.message
+        .set_focused(etat.champ_actif == ChampGit::Message);
     let style_message = if etat.champ_actif == ChampGit::Message {
         Style::default().bg(Color::Blue).fg(Color::White)
     } else {
@@ -123,7 +126,7 @@ pub fn afficher(
     let message_block = Block::default()
         .borders(Borders::ALL)
         .title(" Message de commit ");
-    let message_paragraph = Paragraph::new(etat.message.value.as_str())
+    let message_paragraph = Paragraph::new(etat.message.ligne_avec_curseur())
         .block(message_block)
         .style(style_message);
     f.render_widget(message_paragraph, chunks[1]);

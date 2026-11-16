@@ -9,11 +9,12 @@ use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
-    widgets::{Block, Borders, Paragraph, Row, Table},
+    widgets::{Block, Borders, Cell, Paragraph, Row, Table},
 };
 
 use crate::app::ActionClique;
 use crate::fmt::eur;
+use crate::widgets::text_input::TextInput;
 use household_budget::BudgetGrid;
 use rust_decimal::Decimal;
 use rustledger_core::NaiveDate;
@@ -51,6 +52,21 @@ pub struct UiState {
     pub mois_selectionne: usize,
     /// Posting sélectionné dans la ligne.
     pub posting_selectionne: usize,
+    /// Édition de cellule en cours (toutes les touches y vont) — `None`
+    /// hors édition. Validée par Entrée uniquement : tant qu'elle est
+    /// ouverte, aucune écriture n'a lieu.
+    pub edition: Option<EditionCellule>,
+}
+
+/// Édition d'une cellule budgétaire.
+#[derive(Debug, Clone)]
+pub struct EditionCellule {
+    /// Ligne de la grille en cours d'édition.
+    pub ligne: usize,
+    /// Mois (0..=11) de la cellule en cours d'édition.
+    pub mois: usize,
+    /// Champ de saisie du montant, pré-rempli avec la valeur courante.
+    pub input: TextInput,
 }
 
 impl UiState {
@@ -60,6 +76,7 @@ impl UiState {
             ligne_selectionne: 0,
             mois_selectionne: 0,
             posting_selectionne: 0,
+            edition: None,
         }
     }
 
@@ -139,10 +156,11 @@ pub fn afficher(
     );
     f.render_widget(titre, chunks[0]);
 
-    // 2. Aide rapide (honête : l'édition de cellule au clavier n'est pas
-    // encore branchée).
-    let aide = Paragraph::new(" Édition des cellules budgétaires au clavier : à venir.")
-        .style(Style::default().fg(Color::Gray));
+    // 2. Aide rapide.
+    let aide = Paragraph::new(
+        " flèches : naviguer · e : éditer la cellule · Entrée : valider · Esc : annuler",
+    )
+    .style(Style::default().fg(Color::Gray));
     f.render_widget(aide, chunks[1]);
 
     // 3. Tableau budget vs réel.
@@ -161,6 +179,7 @@ pub fn afficher(
 
     let ligne_idx = etat.ligne_index(Some(grille));
     let mois_idx = etat.mois_selectionne;
+    let edition = etat.edition.as_ref();
 
     // En-têtes de colonnes : Poste | Jan | Fév | ... | Déc | Total | Écart
     let mois_noms = [
@@ -181,18 +200,36 @@ pub fn afficher(
             } else {
                 Style::default()
             };
-            let mut cells: Vec<String> = vec![ligne.account.clone()];
+            let mut cells: Vec<Cell> = vec![Cell::from(ligne.account.clone())];
             let mut total_budget = Decimal::ZERO;
             let mut total_reel = Decimal::ZERO;
             for m in 0..12 {
                 let cell = &ligne.cells[m];
                 total_budget += cell.budgeted;
                 total_reel += cell.actual;
-                cells.push(format!("{:>10}", eur(cell.budgeted)));
+                if let Some(e) = edition.filter(|e| e.ligne == i && e.mois == m) {
+                    // Cellule en cours d'édition : la saisie remplace la
+                    // valeur, avec caret ; rouge si le montant n'est pas
+                    // un Decimal valide (l'édition reste alors ouverte).
+                    let valide = e
+                        .input
+                        .value
+                        .trim()
+                        .replace(',', ".")
+                        .parse::<Decimal>()
+                        .is_ok();
+                    let style_cellule = Style::default()
+                        .bg(Color::Blue)
+                        .fg(if valide { Color::White } else { Color::Red })
+                        .add_modifier(Modifier::BOLD);
+                    cells.push(Cell::from(e.input.ligne_avec_curseur()).style(style_cellule));
+                } else {
+                    cells.push(Cell::from(format!("{:>10}", eur(cell.budgeted))));
+                }
             }
             let ecart = total_budget - total_reel;
-            cells.push(format!("{:>10}", eur(total_budget)));
-            cells.push(format!("{:>10}", eur(ecart)));
+            cells.push(Cell::from(format!("{:>10}", eur(total_budget))));
+            cells.push(Cell::from(format!("{:>10}", eur(ecart))));
             Row::new(cells).style(style)
         })
         .collect();
@@ -202,17 +239,29 @@ pub fn afficher(
         .chain([Constraint::Length(10), Constraint::Length(10)])
         .collect();
 
+    let titre = if let Some(e) = edition {
+        let compte = grille
+            .rows
+            .get(e.ligne)
+            .map_or_else(|| "?".to_string(), |l| l.account.clone());
+        format!(
+            " Édition — {} {} (Entrée : valider, Esc : annuler) ",
+            mois_noms[e.mois], compte
+        )
+    } else {
+        format!(
+            " Budget vs réel — mois {:02} (cellule {}) ",
+            mois_idx + 1,
+            mois_noms[mois_idx]
+        )
+    };
     let tableau = Table::new(rows, widths)
         .header(
             Row::new(header_cells)
                 .style(Style::default().add_modifier(Modifier::BOLD))
                 .bottom_margin(1),
         )
-        .block(Block::default().borders(Borders::ALL).title(format!(
-            " Budget vs réel — mois {:02} (cellule {}) ",
-            mois_idx + 1,
-            mois_noms[mois_idx]
-        )))
+        .block(Block::default().borders(Borders::ALL).title(titre))
         .column_spacing(1);
 
     f.render_widget(tableau, chunks[2]);
@@ -250,6 +299,55 @@ pub fn on_key(
 ) -> Option<ActionBudget> {
     use crossterm::event::KeyCode;
 
+    // Édition en cours : toutes les touches y vont (un montant peut
+    // contenir r, l, x…). Entrée valide, Esc annule sans écriture ; un
+    // montant invalide garde l'édition ouverte (la cellule est rendue en
+    // rouge). Tant que l'édition n'est pas validée, AUCUNE écriture n'a
+    // lieu — c'est la régression du comportement « 'e' réécrivait la
+    // cellule avec sa valeur existante ».
+    if let Some(edition) = &mut etat.edition {
+        if edition.input.on_key(key) {
+            return None;
+        }
+        return match key.code {
+            KeyCode::Enter => {
+                let Some(grille) = grille else {
+                    etat.edition = None;
+                    return None;
+                };
+                let Some(ligne) = grille.rows.get(edition.ligne) else {
+                    etat.edition = None;
+                    return None;
+                };
+                // Virgule décimale acceptée (saisie française) ; le parse
+                // est un `Decimal` de bout en bout, jamais de f64.
+                let texte = edition.input.value.trim().replace(',', ".");
+                let Ok(montant) = texte.parse::<Decimal>() else {
+                    return None;
+                };
+                let Some(date) =
+                    NaiveDate::new(etat.annee, i8::try_from(edition.mois + 1).unwrap_or(1), 1).ok()
+                else {
+                    etat.edition = None;
+                    return None;
+                };
+                let action = ActionBudget::Cellule {
+                    annee: etat.annee,
+                    date,
+                    compte: ligne.account.clone(),
+                    montant,
+                };
+                etat.edition = None;
+                Some(action)
+            }
+            KeyCode::Esc => {
+                etat.edition = None;
+                None
+            }
+            _ => None,
+        };
+    }
+
     match key.code {
         KeyCode::Up => {
             etat.ligne_precedente();
@@ -268,23 +366,24 @@ pub fn on_key(
             None
         }
         KeyCode::Char('e') => {
+            // Ouvre l'éditeur sur la cellule sélectionnée, pré-rempli avec
+            // la valeur courante. Aucune écriture à ce stade : la commande
+            // ne part qu'à la validation (Entrée).
             let grille = grille?;
             if grille.rows.is_empty() {
                 return None;
             }
             let ligne_idx = etat.ligne_index(Some(grille));
-            let ligne = &grille.rows[ligne_idx];
             let mois = etat.mois_selectionne;
-            let cell = &ligne.cells[mois];
-            let date =
-                rustledger_core::NaiveDate::new(etat.annee, i8::try_from(mois + 1).unwrap_or(1), 1)
-                    .ok()?;
-            Some(ActionBudget::Cellule {
-                annee: etat.annee,
-                date,
-                compte: ligne.account.clone(),
-                montant: cell.budgeted,
-            })
+            let valeur = grille.rows[ligne_idx].cells[mois].budgeted;
+            let mut input = TextInput::with_value(valeur.to_string());
+            input.set_focused(true);
+            etat.edition = Some(EditionCellule {
+                ligne: ligne_idx,
+                mois,
+                input,
+            });
+            None
         }
         KeyCode::Char('g') => {
             // Générer l'année suivante (placeholder — nécessite une UI de dialogue).

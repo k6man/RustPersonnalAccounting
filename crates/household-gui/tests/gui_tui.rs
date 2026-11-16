@@ -15,7 +15,7 @@ use ratatui::backend::TestBackend;
 use ratatui::layout::Rect;
 use rust_decimal::Decimal;
 
-use household_budget::BudgetGrid;
+use household_budget::{BudgetGrid, GridCell, GridRow};
 use household_gui::app::{titres_onglets, zones_onglets};
 use household_gui::viewmodel::{
     BudgetVsReel, CascadeAnnee, GraphesData, LigneJournal, PostingVue, RapportsData, UiData,
@@ -188,6 +188,41 @@ fn text_input_supprime_et_deplace() {
     input.on_key(key(KeyCode::Backspace, KeyModifiers::NONE));
     assert_eq!(input.value, "abe");
     assert_eq!(input.cursor, 2);
+}
+
+#[test]
+fn text_input_ligne_curseur_inverse_le_caractere_sous_le_curseur() {
+    let mut input = TextInput::with_value("abc");
+    input.set_focused(true);
+    input.cursor = 1; // entre 'a' et 'b' → le caret est sur 'b'
+
+    let ligne = input.ligne_avec_curseur();
+    let contenus: Vec<&str> = ligne.spans.iter().map(|s| s.content.as_ref()).collect();
+    assert_eq!(contenus, vec!["a", "b", "c"], "découpe autour du curseur");
+    assert_eq!(
+        ligne.spans[1].style.bg,
+        Some(ratatui::style::Color::White),
+        "le caractère sous le curseur porte le caret"
+    );
+}
+
+#[test]
+fn text_input_ligne_sans_focus_pas_de_caret() {
+    let input = TextInput::with_value("abc");
+    let ligne = input.ligne_avec_curseur();
+    assert_eq!(ligne.spans.len(), 1, "sans focus : texte simple");
+    assert_eq!(ligne.spans[0].content, "abc");
+}
+
+#[test]
+fn text_input_ligne_curseur_en_fin_bloc_plein() {
+    let mut input = TextInput::with_value("abc");
+    input.set_focused(true);
+
+    let ligne = input.ligne_avec_curseur();
+    let dernier = ligne.spans.last().expect("au moins un span");
+    assert_eq!(dernier.content, " ", "curseur en fin : bloc plein");
+    assert_eq!(dernier.style.bg, Some(ratatui::style::Color::White));
 }
 
 // ----------------------------------------------------------------- Journal ---
@@ -511,6 +546,203 @@ fn budget_action_edition_cellule_retourne_none_si_grille_vide() {
     );
     // Avec une grille vide, on_key retourne None (pas de ligne).
     assert!(action.is_none());
+}
+
+// ------------------------------------------------- Éditeur de cellule budgétaire ---
+
+/// Grille d'essai avec une seule ligne budgétaire, tous les mois à 900,00.
+fn grille_essai() -> BudgetGrid {
+    BudgetGrid {
+        year: 2026,
+        rows: vec![GridRow {
+            account: "Expenses:Alimentation:Courses".to_string(),
+            currency: "EUR".to_string(),
+            cells: std::array::from_fn(|_| GridCell {
+                budgeted: Decimal::new(90000, 2),
+                actual: Decimal::ZERO,
+            }),
+        }],
+        totals: vec![],
+        warnings: vec![],
+    }
+}
+
+#[test]
+fn budget_e_ouvre_l_edition_pre_remplie_sans_ecrire() {
+    let grille = grille_essai();
+    let mut etat = budget::UiState::nouveau(2026);
+    let (_cmd_tx, _cmd_rx) = channel::<household_gui::worker::Command>();
+
+    let action = budget::on_key(
+        key(KeyCode::Char('e'), KeyModifiers::NONE),
+        &mut etat,
+        Some(&grille),
+        &|_| false,
+        &_cmd_tx,
+    );
+
+    // Régression : 'e' n'écrit rien tout seul (l'ancien comportement
+    // réécrivait la valeur existante de la cellule).
+    assert!(action.is_none(), "'e' doit seulement ouvrir l'éditeur");
+    let edition = etat.edition.as_ref().expect("édition ouverte");
+    assert_eq!(edition.ligne, 0);
+    assert_eq!(edition.mois, 0);
+    assert_eq!(edition.input.value, "900.00", "pré-remplie avec la valeur");
+    assert!(edition.input.focused, "le caret est rendu");
+}
+
+#[test]
+fn budget_edition_entree_valide_avec_montant_saisi() {
+    let grille = grille_essai();
+    let mut etat = budget::UiState::nouveau(2026);
+    let (_cmd_tx, _cmd_rx) = channel::<household_gui::worker::Command>();
+
+    let action = budget::on_key(
+        key(KeyCode::Char('e'), KeyModifiers::NONE),
+        &mut etat,
+        Some(&grille),
+        &|_| false,
+        &_cmd_tx,
+    );
+    assert!(action.is_none());
+
+    // Saisie d'un nouveau montant (virgule décimale acceptée).
+    etat.edition.as_mut().unwrap().input.value = "12,5".to_string();
+    let action = budget::on_key(
+        key(KeyCode::Enter, KeyModifiers::NONE),
+        &mut etat,
+        Some(&grille),
+        &|_| false,
+        &_cmd_tx,
+    );
+
+    let Some(budget::ActionBudget::Cellule {
+        annee,
+        date,
+        compte,
+        montant,
+    }) = action
+    else {
+        panic!("Entrée valide l'édition : {action:?}");
+    };
+    assert_eq!(annee, 2026);
+    assert_eq!(date.to_string(), "2026-01-01", "mois 0 → 1ᵉʳ janvier");
+    assert_eq!(compte, "Expenses:Alimentation:Courses");
+    assert_eq!(montant, Decimal::new(125, 1), "12,5 → 12.5");
+    assert!(etat.edition.is_none(), "l'édition est fermée");
+}
+
+#[test]
+fn budget_edition_esc_annule_sans_ecrire() {
+    let grille = grille_essai();
+    let mut etat = budget::UiState::nouveau(2026);
+    let (_cmd_tx, _cmd_rx) = channel::<household_gui::worker::Command>();
+
+    budget::on_key(
+        key(KeyCode::Char('e'), KeyModifiers::NONE),
+        &mut etat,
+        Some(&grille),
+        &|_| false,
+        &_cmd_tx,
+    );
+    etat.edition.as_mut().unwrap().input.value = "42".to_string();
+
+    let action = budget::on_key(
+        key(KeyCode::Esc, KeyModifiers::NONE),
+        &mut etat,
+        Some(&grille),
+        &|_| false,
+        &_cmd_tx,
+    );
+
+    assert!(action.is_none(), "Esc ne produit aucune écriture");
+    assert!(etat.edition.is_none(), "l'édition est fermée");
+}
+
+#[test]
+fn budget_edition_montant_invalide_garde_ouverte() {
+    let grille = grille_essai();
+    let mut etat = budget::UiState::nouveau(2026);
+    let (_cmd_tx, _cmd_rx) = channel::<household_gui::worker::Command>();
+
+    budget::on_key(
+        key(KeyCode::Char('e'), KeyModifiers::NONE),
+        &mut etat,
+        Some(&grille),
+        &|_| false,
+        &_cmd_tx,
+    );
+    etat.edition.as_mut().unwrap().input.value = "abc".to_string();
+
+    let action = budget::on_key(
+        key(KeyCode::Enter, KeyModifiers::NONE),
+        &mut etat,
+        Some(&grille),
+        &|_| false,
+        &_cmd_tx,
+    );
+
+    assert!(action.is_none(), "montant invalide : aucune écriture");
+    assert!(
+        etat.edition.is_some(),
+        "l'édition reste ouverte pour corriger"
+    );
+}
+
+#[test]
+fn budget_edition_consomme_les_lettres_comme_du_texte() {
+    let grille = grille_essai();
+    let mut etat = budget::UiState::nouveau(2026);
+    let (_cmd_tx, _cmd_rx) = channel::<household_gui::worker::Command>();
+
+    budget::on_key(
+        key(KeyCode::Char('e'), KeyModifiers::NONE),
+        &mut etat,
+        Some(&grille),
+        &|_| false,
+        &_cmd_tx,
+    );
+
+    // Pendant l'édition, r/l/x… sont du texte de montant, pas des commandes.
+    let action = budget::on_key(
+        key(KeyCode::Char('r'), KeyModifiers::NONE),
+        &mut etat,
+        Some(&grille),
+        &|_| false,
+        &_cmd_tx,
+    );
+    assert!(action.is_none());
+    assert_eq!(
+        etat.edition.as_ref().unwrap().input.value,
+        "900.00r",
+        "la lettre est insérée dans le champ"
+    );
+}
+
+#[test]
+fn budget_rendu_en_edition_ne_panique_pas() {
+    let grille = grille_essai();
+    let mut etat = budget::UiState::nouveau(2026);
+    let (_cmd_tx, _cmd_rx) = channel::<household_gui::worker::Command>();
+
+    budget::on_key(
+        key(KeyCode::Char('e'), KeyModifiers::NONE),
+        &mut etat,
+        Some(&grille),
+        &|_| false,
+        &_cmd_tx,
+    );
+
+    render_safe(buffer_rect(), |frame| {
+        budget::afficher(
+            frame,
+            buffer_rect(),
+            Some(&grille),
+            &mut etat,
+            &|_| false,
+            &mut Vec::new(),
+        );
+    });
 }
 
 // ----------------------------------------------------------------- Graphiques ---

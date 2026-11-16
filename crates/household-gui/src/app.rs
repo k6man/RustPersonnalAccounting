@@ -364,45 +364,47 @@ impl App {
                 .donnees
                 .as_ref()
                 .and_then(|d| d.grilles.get(&self.budget.annee));
-            // Navigation (flèches) déléguée à l'écran Budget ; les autres
-            // touches (q, r, l) restent globales. L'édition de cellule ('e')
-            // n'est PAS branchée tant que l'éditeur de cellule n'existe pas
-            // (voir plan « Éditeur de cellule budgétaire » dans TODO.md) :
-            // l'ancien comportement réécrivait la valeur existante.
-            let pour_le_budget = matches!(
-                key.code,
-                KeyCode::Up | KeyCode::Down | KeyCode::Left | KeyCode::Right
-            );
-            if pour_le_budget
-                && let Some(action) = budget::on_key(
+            // Édition de cellule ouverte : toutes les touches y vont (le
+            // texte d'un montant peut contenir r, l, e, x…) et sont
+            // consommées. Sinon, seules navigation/édition sont prises, les
+            // autres (q, r, l) restent globales.
+            let pour_le_budget = self.budget.edition.is_some()
+                || matches!(
+                    key.code,
+                    KeyCode::Up
+                        | KeyCode::Down
+                        | KeyCode::Left
+                        | KeyCode::Right
+                        | KeyCode::Char('e')
+                );
+            if pour_le_budget {
+                let action = budget::on_key(
                     key,
                     &mut self.budget,
                     grille,
                     &|famille| self.config.rollover_actif(famille),
                     &self.cmd_tx,
-                )
-            {
-                match action {
-                    budget::ActionBudget::Cellule {
-                        annee,
-                        date,
-                        compte,
-                        montant,
-                    } => {
-                        self.en_chargement = true;
-                        self.flash = None;
-                        self.cmd_tx
-                            .send(Command::CelluleBudget {
-                                annee,
-                                date,
-                                compte,
-                                montant,
-                            })
-                            .ok();
-                    }
-                    budget::ActionBudget::GenererAnnee { .. }
-                    | budget::ActionBudget::BasculerRollover(_)
-                    | budget::ActionBudget::Aucun => {}
+                );
+                if let Some(budget::ActionBudget::Cellule {
+                    annee,
+                    date,
+                    compte,
+                    montant,
+                }) = action
+                {
+                    // Part uniquement à la validation explicite (Entrée) :
+                    // ouverture, annulation et montant invalide ne
+                    // produisent aucune commande.
+                    self.en_chargement = true;
+                    self.flash = None;
+                    self.cmd_tx
+                        .send(Command::CelluleBudget {
+                            annee,
+                            date,
+                            compte,
+                            montant,
+                        })
+                        .ok();
                 }
                 return false;
             }
