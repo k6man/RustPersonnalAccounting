@@ -653,15 +653,17 @@ impl App {
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
-                Constraint::Length(3),
-                Constraint::Min(0),
-                Constraint::Length(1),
+                Constraint::Length(3), // onglets (avec bordure)
+                Constraint::Length(6), // en-tête (soldes, jauges, patrimoine)
+                Constraint::Min(0),    // contenu
+                Constraint::Length(1), // flash
             ])
             .split(f.size());
 
-        self.dessine_entete(f, chunks[0]);
-        self.dessine_contenu(f, chunks[1]);
-        self.dessine_flash(f, chunks[2]);
+        Self::dessine_barre_ecrans(f, chunks[0], self.ecran_actif, &mut self.zones_cliquables);
+        self.dessine_entete(f, chunks[1]);
+        self.dessine_contenu(f, chunks[2]);
+        self.dessine_flash(f, chunks[3]);
     }
 
     fn dessine_entete(&self, f: &mut Frame, area: ratatui::layout::Rect) {
@@ -701,13 +703,6 @@ impl App {
     }
 
     fn dessine_contenu(&mut self, f: &mut Frame, area: ratatui::layout::Rect) {
-        let chunks = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([Constraint::Length(3), Constraint::Min(0)])
-            .split(area);
-
-        Self::dessine_barre_ecrans(f, chunks[0], self.ecran_actif, &mut self.zones_cliquables);
-
         if self.donnees.is_none() {
             let texte = if self.en_chargement {
                 "Chargement du ledger…"
@@ -721,7 +716,7 @@ impl App {
                 } else {
                     Style::default().fg(Color::Red)
                 });
-            f.render_widget(paragraphe, chunks[1]);
+            f.render_widget(paragraphe, area);
             return;
         }
 
@@ -771,7 +766,7 @@ impl App {
                     let paragraphe = Paragraph::new("Chargement des données Git…")
                         .block(Block::default().borders(Borders::ALL).title(" Git "))
                         .style(Style::default().fg(Color::Gray));
-                    f.render_widget(paragraphe, chunks[1]);
+                    f.render_widget(paragraphe, area);
                 }
             },
         }
