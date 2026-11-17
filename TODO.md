@@ -136,9 +136,11 @@ maintenant un vrai formulaire :
   3 tests unitaires (Esc retour, Esc neutre sur le Tableau de bord,
   q/Ctrl+C quittent).
 
-**Prochaine action : #10 — AGENTS.md** à mettre à jour : il décrit
-l'ancienne app egui (fenêtres flottantes, `fenetres_ouvertes`, pièges
-egui 0.37…) alors que le produit est une TUI ratatui plein écran.
+**Prochaine action : usage réel** (saisie quotidienne, budgets 2027 via
+l'éditeur) — le backlog de la revue TUI est **terminé** (#1 à #9), #10
+(AGENTS.md) livré le 2026-11-17 : la doc décrit désormais la TUI
+ratatui (écran unique à onglets, pièges ratatui 0.26/crossterm 0.27,
+routing clavier, tests TestBackend) au lieu de l'ancien egui.
 
 **Décisions tranchées avec la maîtresse d'ouvrage** : une seule fenêtre « Graphiques »
 avec des mini-onglets internes (pas une fenêtre par graphe) ; trois graphes
@@ -417,9 +419,10 @@ Reste, par priorité :
   persistantes, barre d'aide permanente.
 - [x] **#9 — Esc = retour** (2026-11-17, choix tranché) : Esc ramène au
   Tableau de bord et ne quitte jamais ; q et Ctrl+C restent les issues.
-- [ ] **#10 — AGENTS.md** : décrit une app egui (fenêtres flottantes,
-  `fenetres_ouvertes`, pièges egui 0.37) alors que le produit est une TUI
-  ratatui — mettre à jour la section Architecture.
+- [x] **#10 — AGENTS.md** (2026-11-17, voir « En cours ») : la doc décrit
+  la TUI ratatui (écran unique à onglets, pièges ratatui 0.26 /
+  crossterm 0.27, routing clavier, tests TestBackend) au lieu de l'ancien
+  egui.
 
 **Plan #1 — éditeur de cellule budgétaire** — **livré le 2026-11-16**
 (l'implémentation suit le plan ; les paramètres `_config`/`_cmd_tx` de

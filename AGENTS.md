@@ -8,8 +8,9 @@ toute modification** — l'état courant et la prochaine action y sont toujours 
 
 ```sh
 just check          # fmt-check + clippy -D warnings + cargo test --workspace + rledger check
-just run            # GUI (cargo run -p household-gui)
-cargo test -p household-gui --test budget_gui grille_2026   # un seul test
+just run            # TUI (cargo run -p household-gui)
+cargo test -p household-gui --test gui_tui                # tous les tests TUI
+cargo test -p household-gui --test budget_gui grille_2026 # un seul test
 cargo run -q -p household-core --bin household-cli -- check examples/ledger/main.beancount  # repli si rledger absent
 ```
 
@@ -45,7 +46,7 @@ cargo run -q -p household-core --bin household-cli -- check examples/ledger/main
 ## Conventions non négociables
 
 - **Montants** : `rust_decimal::Decimal` de bout en bout — jamais `f64` pour une somme,
-  `Decimal::try_from(f64)` à la frontière d'un tracé egui si nécessaire.
+  `Decimal::try_from(f64)` à la frontière d'un tracé si nécessaire.
 - **Dates** : `rustledger_core::NaiveDate` (jiff) — pas de chrono.
 - **Langue** : code, commentaires, UI, comptes en français, sans accents dans les
   identifiants (`Expenses:Alimentation:Courses`).
@@ -65,35 +66,51 @@ cargo run -q -p household-core --bin household-cli -- check examples/ledger/main
 - `crates/household-git` : git2 (libgit2, pas de binaire git). **Un commit via libgit2
   n'exécute pas le hook pre-commit** → la validation du ledger est reproduite côté app
   (ADR-002). Les chemins du statut sont relatifs à la **racine du dépôt**.
-- `crates/household-gui` (binaire `compta-foyer`) : le worker (`worker.rs`) fait **tout**
-  le chargement/l'écriture hors UI thread via `Command`/`LoadOutcome` (mpsc) ; les vues
-  (`views/`) sont de la présentation pure — calculs dans `viewmodel.rs` (UiData en `Arc`)
-  ou dans les modules purs des autres crates. Pas de logique métier dans les vues.
-  Watcher `notify` → Reload (débounce 250 ms).
-- **Écrans = fenêtres flottantes** : `fenetres_ouvertes: [bool; 7]` dans `app.rs`
-  (méthode `FoyerApp::vue`), barre du haut en `toggle_value`, Ctrl+1..7 ; le tableau
-  de bord démarre quasi plein écran (`default_size`, pas de `maximized` en egui 0.37) ;
-  position/taille persistées par eframe ; `UiState` des vues conservés entre
-  ouvertures. `COMPTA_ECRAN=<tab>` ouvre seulement la fenêtre demandée (affordance
-  de test/captures).
-
-## Pièges egui 0.37 (détails et découvertes dans TODO.md)
-
-- Pas de `TextEdit` dans un `egui::Grid` — la cellule borne `desired_width` (~40 px
-  au départ, `grid.rs::available_rect`) ; rangées `ui.horizontal` explicites.
-- Pas de `desired_width(f32::INFINITY)` dans un Grid **ni dans le contenu d'un
-  `ScrollArea::vertical`** : le contenu se dilate à l'infini → un `Plot` voisin
-  alloue un rect infini → tracé silencieusement vide. Largeurs fixes.
-- `TableBuilder` n'a pas de scroll horizontal intégré → enrouler dans
-  `ScrollArea::horizontal().auto_shrink([false; 2])` ; **deux tables dans le même
-  Ui → `id_salt` uniques** (sinon warnings rouges « collision d'IDs »).
-- Vérification des écrans par captures : lancer directement le binaire depuis le
-  shell (via `open` : panic winit avant la fenêtre), `kill -9` + `pkill -9 -f
-  UserNotificationCenter` (un SIGTERM ouvre un dialogue de crash qui vole l'écran),
-  prévoir `caffeinate -dims` pendant une campagne de captures.
+- `crates/household-gui` (binaire `compta-foyer`) : **TUI ratatui plein écran**
+  (une seule « fenêtre » terminal, pas d'egui). Le worker (`worker.rs`) fait
+  **tout** le chargement/l'écriture dans un thread dédié via
+  `Command`/`LoadOutcome` (mpsc) ; la boucle de `App::run` ne fait que
+  rendu + événements. Les vues (`views/`) sont de la présentation pure —
+  calculs dans `viewmodel.rs` (UiData en `Arc`), dans les modules purs
+  (`saisie.rs`) ou dans les autres crates. Pas de logique métier dans les
+  vues. Watcher `notify` → Reload (débounce 250 ms).
+- **Écran unique à onglets** : `ecran_actif` dans `app.rs` (index dans
+  `Onglet::TOUS`), Ctrl+1..7 dans la barre du haut ; **Esc = retour au
+  Tableau de bord, jamais quitter** (`q`/Ctrl+C quittent) ; flash en bas
+  d'écran (succès 4 s, erreur persistante) ; modale de confirmation de
+  suppression. La souris passe par les **zones cliquables enregistrées au
+  rendu** (`zones_cliquables: Vec<(Rect, ActionClique)>`) — jamais de
+  coordonnées magiques. `COMPTA_ECRAN=<ecran>` ouvre seulement l'écran
+  demandé (affordance de test/captures).
 - Préférences app (chemin du vrai ledger, rollover par famille) :
   `~/.config/rust-personal-accounting.toml` (migré depuis `compta-foyer.toml`,
   v0.1), **jamais dans le ledger**.
+
+## Pièges ratatui 0.26 / crossterm 0.27 (détails dans TODO.md)
+
+- **`KeyEventKind::Press` filtré** dans `App::run` : sans filtre, les
+  terminaux/OS qui émettent Press+Release traitent chaque touche deux fois.
+- **Routing clavier par priorité** : modale de confirmation > Ctrl+1..7 >
+  écran actif > commandes globales (q/r/l/Esc). Les écrans à champ texte
+  (Saisie, Git) et les éditeurs (posting, cellule budgétaire) consomment
+  **toutes** les touches — les lettres r/l/e/x y sont du texte.
+- **Colonnes de `Table`** : le `column_spacing` est soustrait **avant** la
+  répartition (vérifié dans les sources épinglées 0.26.3,
+  `widgets/table/table.rs`) ; pour une grille large →
+  `Constraint::Percentage` (jamais des `Length` figés : ≈161 colonnes
+  mettaient Total/Écart hors écran dès 120) + cellules compactes — le clip
+  droit perd d'abord les décimales, dégradation gracieuse.
+- **Focus des champs** : `champ_actif` est la seule source de vérité,
+  `sync_focus` appelé au rendu — les TextInput ne conservent pas le focus
+  entre deux dessins.
+- **Tests de rendu** : `TestBackend` + lecture du buffer
+  (`backend.buffer().content()`), helper `render_safe` dans
+  `tests/gui_tui.rs`. Le fixture doit contenir des lignes réelles (une
+  grille vide rend « Aucune ligne… » et le test passe à côté de son objet)
+  ; en cas d'échec, afficher le buffer dans le message (`{texte:?}`).
+- ratatui n'est pas seul épinglé : **ratatui « 0.26 »** (0.26.3 résolu),
+  crossterm 0.27 — lisez les sources dans
+  `~/.cargo/registry/src/…/ratatui-0.26.3/` plutôt que la doc du dépôt.
 
 ## Git
 
