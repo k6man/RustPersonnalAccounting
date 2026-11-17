@@ -9,6 +9,9 @@
 //!   mois → mois (option, calcul maison non fourni par rustledger).
 //! - **Duplication** d'année N→N+1 ([`duplicate`]) : copie des directives avec
 //!   ajustement en pour cent et arrondi au multiple supérieur paramétrable.
+//! - **Commentaires** de lignes budgétaires ([`commentaires`]) : une ligne
+//!   `; note` au-dessus d'une directive, lue côté grille et écrite par
+//!   [`writer::set_comment`] — dans le ledger (versionné, ADR-004).
 //! - **Writer** ([`writer`]) : édition chirurgicale de `budgets/AAAA.beancount`
 //!   (une directive = une ligne, span exact, commentaires préservés) au-dessus
 //!   des garanties de `household-core::writer` (verrou, pré-vérification sur
@@ -16,12 +19,14 @@
 //!
 //! Le ledger (`budgets/AAAA.beancount`) reste la seule source de vérité.
 
+pub mod commentaires;
 pub mod duplicate;
 pub mod grid;
 pub mod rollover;
 pub mod writer;
 
+pub use commentaires::{commentaires, nettoie};
 pub use duplicate::{DuplicationError, duplicate_year, interval_keyword};
 pub use grid::{BudgetGrid, ColumnTotal, GridCell, GridRow};
 pub use rollover::RolloverSeries;
-pub use writer::{budget_directive, budget_file, set_cell, write_year};
+pub use writer::{budget_directive, budget_file, set_cell, set_comment, write_year};

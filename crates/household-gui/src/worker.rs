@@ -51,6 +51,14 @@ pub enum Command {
         compte: String,
         montant: rust_decimal::Decimal,
     },
+    /// Éditeur de budget : écrire le commentaire d'une ligne (compte) dans
+    /// le fichier de l'année — ligne `; note` au-dessus de la première
+    /// directive du compte ; texte vide = suppression.
+    CommentaireBudget {
+        annee: i16,
+        compte: String,
+        texte: String,
+    },
     /// Éditeur de budget : générer l'année cible par duplication de la
     /// source (pour cent ±, arrondi au pas).
     GenererAnnee {
@@ -200,6 +208,17 @@ pub fn demarrer(main: PathBuf) -> (Sender<Command>, Receiver<LoadOutcome>) {
                         &out_tx,
                         cellule_budget(&main, annee, date, &compte, montant),
                         "cellule budget",
+                    );
+                }
+                Command::CommentaireBudget {
+                    annee,
+                    compte,
+                    texte,
+                } => {
+                    send_sans_panique(
+                        &out_tx,
+                        commentaire_budget(&main, annee, &compte, &texte),
+                        "commentaire budget",
                     );
                 }
                 Command::GenererAnnee {
@@ -391,6 +410,29 @@ fn cellule_budget(
             Err(e) => LoadOutcome::Echec(e),
         },
         Err(e) => LoadOutcome::Refuse(format!("budget refusé : {e}")),
+    }
+}
+
+/// Commentaire d'une ligne budgétaire : écriture dans le ledger (ligne `;`
+/// au-dessus de la première directive du compte), puis rechargement.
+fn commentaire_budget(main: &Path, annee: i16, compte: &str, texte: &str) -> LoadOutcome {
+    let snapshot = match household_core::Snapshot::load(main) {
+        Ok(snapshot) => snapshot,
+        Err(e) => return LoadOutcome::Echec(e.to_string()),
+    };
+    match household_budget::writer::set_comment(&snapshot, annee, compte, texte) {
+        Ok(nouveau) => match donnees_fraiches(&nouveau) {
+            Ok(donnees) => {
+                let message = if texte.trim().is_empty() {
+                    format!("commentaire retiré — {compte} ({annee})")
+                } else {
+                    format!("commentaire enregistré — {compte} ({annee})")
+                };
+                LoadOutcome::EcritBudget { donnees, message }
+            }
+            Err(e) => LoadOutcome::Echec(e),
+        },
+        Err(e) => LoadOutcome::Refuse(format!("commentaire refusé : {e}")),
     }
 }
 

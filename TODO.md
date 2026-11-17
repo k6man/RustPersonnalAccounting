@@ -213,6 +213,49 @@ postes (`.take(8)`), sans défilement. Livré :
   dynamique sur `etat.visibles` — l'arithmétique en dur du premier jet
   était fausse : visibles dépend du terminal, pas de nombres constants).
 
+**Commentaires de lignes budgétaires (2026-11-17)** — demande d'usage :
+commentaire sur chaque ligne du budget (onglet 4), stocké dans le ledger
+(lignes `;` au-dessus des directives `custom "budget"`), affiché en bande
+sous la grille. Livré :
+
+- [x] **Lecture pure** : `household_budget::commentaires` (module
+  `commentaires.rs` + 4 tests unitaires) — extrait `BTreeMap<compte, note>`
+  depuis le texte du fichier `budgets/AAAA.beancount` ; convention :
+  commentaire `;` contigu immédiatement au-dessus de la 1ʳᵉ directive du
+  compte dans l'année ; blancs/`#` cassent le rattachement ; lignes contiguës
+  jointes.
+- [x] **Écriture chirurgicale** : `writer::set_comment(snapshot, year,
+  compte, commentaire)` — localise la 1ʳᵉ directive du compte dans l'année
+  (`snapshot.entries()/span_of()/source_of()`), `edit_ledger_file` +
+  `split_directive_block` → remplace/insère/supprime le bloc de lignes `;`
+  au-dessus de `start` (texte vide = suppression). Recharge le snapshot
+  après écriture (offsets d'octets). 4 tests d'intégration sur copie scratch
+  (round-trip octet-à-octet, remplacement, suppression, refus sans
+  directive, re-snapshot).
+- [x] **Viewmodel** : `UiData.commentaires_budget:
+  BTreeMap<i16, BTreeMap<String, String>>` rempli dans `build()` via
+  `budget_file()` + `std::fs::read_to_string` (échec = map vide) ; fixture
+  `donnees_test()` étendue.
+- [x] **Worker** : `Command::CommentaireBudget { annee, compte, texte }` +
+  handler `commentaire_budget` (calqué sur `cellule_budget`) →
+  `LoadOutcome::EcritBudget`/`Refuse`.
+- [x] **Vue Budget** :
+  - `UiState.edition_commentaire: Option<EditionCommentaire { ligne,
+    input }>` ;
+  - layout 4 chunks (titre, aide, grille, bande 1 ligne) ;
+  - bande sous la grille : affiche ` 💬 «note» (c : éditer) ` (gris) ou
+    l'input avec caret en bleu pendant l'édition ;
+  - `c` ouvre l'éditeur (pré-rempli), Entrée valide →
+    `ActionBudget::Commentaire { annee, compte, texte }` (texte vide =
+    suppression), Esc annule ;
+  - signature `on_key` + param `commentaires: &BTreeMap<String, String>` ;
+  - aide : `c : commentaire`.
+- [x] **App** : gate `pour_le_budget` += `Char('c')` et
+  `edition_commentaire.is_some()` ; routing `ActionBudget::Commentaire` →
+  `Command::CommentaireBudget` ; passage de la map de l'année.
+- [x] **Tests TUI** : `c` ouvre pré-rempli, Esc annule sans action, Entrée
+  produit l'Action, bande rendue (4 tests).
+
 **Prochaine action : usage réel** (saisie quotidienne, budgets 2027 via
 l'éditeur).
 

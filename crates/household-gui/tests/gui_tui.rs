@@ -128,6 +128,13 @@ fn donnees_test() -> Arc<UiData> {
         comptes: vec![],
         payees: vec![],
         grilles,
+        commentaires_budget: BTreeMap::from([(
+            2026,
+            BTreeMap::from([(
+                "Expenses:Alimentation:Courses".to_string(),
+                "Courses hebdo du foyer".to_string(),
+            )]),
+        )]),
         directives_budget: vec![],
         rapports: rapport,
         graphiques,
@@ -785,6 +792,7 @@ fn budget_affiche_sans_panique() {
             buffer_rect(),
             _grille,
             &mut etat,
+            &commentaires_vide(),
             &|_| false,
             &mut Vec::new(),
         );
@@ -824,6 +832,7 @@ fn budget_croix_de_selection_visible() {
                 area,
                 Some(&grille),
                 &mut etat,
+                &commentaires_vide(),
                 &|_| false,
                 &mut Vec::new(),
             );
@@ -919,6 +928,7 @@ fn budget_rendu_terminal_etroit_ne_panique_pas() {
             etroit,
             Some(&grille),
             &mut etat,
+            &commentaires_vide(),
             &|_| false,
             &mut Vec::new(),
         );
@@ -942,6 +952,7 @@ fn budget_rendu_large_toutes_colonnes_visibles() {
                 etroit,
                 Some(&grille),
                 &mut etat,
+                &commentaires_vide(),
                 &|_| false,
                 &mut Vec::new(),
             );
@@ -1142,6 +1153,7 @@ fn budget_action_edition_cellule_retourne_none_si_grille_vide() {
         key(KeyCode::Char('e'), KeyModifiers::NONE),
         &mut etat,
         grille,
+        &commentaires_vide(),
         &|_| false,
         &_cmd_tx,
     );
@@ -1150,6 +1162,11 @@ fn budget_action_edition_cellule_retourne_none_si_grille_vide() {
 }
 
 // ------------------------------------------------- Éditeur de cellule budgétaire ---
+
+/// Map de commentaires vide (paramètre des vues budget dans les tests).
+fn commentaires_vide() -> BTreeMap<String, String> {
+    BTreeMap::new()
+}
 
 /// Grille d'essai avec une seule ligne budgétaire, tous les mois à 900,00.
 fn grille_essai() -> BudgetGrid {
@@ -1178,6 +1195,7 @@ fn budget_e_ouvre_l_edition_pre_remplie_sans_ecrire() {
         key(KeyCode::Char('e'), KeyModifiers::NONE),
         &mut etat,
         Some(&grille),
+        &commentaires_vide(),
         &|_| false,
         &_cmd_tx,
     );
@@ -1202,6 +1220,7 @@ fn budget_edition_entree_valide_avec_montant_saisi() {
         key(KeyCode::Char('e'), KeyModifiers::NONE),
         &mut etat,
         Some(&grille),
+        &commentaires_vide(),
         &|_| false,
         &_cmd_tx,
     );
@@ -1213,6 +1232,7 @@ fn budget_edition_entree_valide_avec_montant_saisi() {
         key(KeyCode::Enter, KeyModifiers::NONE),
         &mut etat,
         Some(&grille),
+        &commentaires_vide(),
         &|_| false,
         &_cmd_tx,
     );
@@ -1243,6 +1263,7 @@ fn budget_edition_esc_annule_sans_ecrire() {
         key(KeyCode::Char('e'), KeyModifiers::NONE),
         &mut etat,
         Some(&grille),
+        &commentaires_vide(),
         &|_| false,
         &_cmd_tx,
     );
@@ -1252,6 +1273,7 @@ fn budget_edition_esc_annule_sans_ecrire() {
         key(KeyCode::Esc, KeyModifiers::NONE),
         &mut etat,
         Some(&grille),
+        &commentaires_vide(),
         &|_| false,
         &_cmd_tx,
     );
@@ -1270,6 +1292,7 @@ fn budget_edition_montant_invalide_garde_ouverte() {
         key(KeyCode::Char('e'), KeyModifiers::NONE),
         &mut etat,
         Some(&grille),
+        &commentaires_vide(),
         &|_| false,
         &_cmd_tx,
     );
@@ -1279,6 +1302,7 @@ fn budget_edition_montant_invalide_garde_ouverte() {
         key(KeyCode::Enter, KeyModifiers::NONE),
         &mut etat,
         Some(&grille),
+        &commentaires_vide(),
         &|_| false,
         &_cmd_tx,
     );
@@ -1300,6 +1324,7 @@ fn budget_edition_consomme_les_lettres_comme_du_texte() {
         key(KeyCode::Char('e'), KeyModifiers::NONE),
         &mut etat,
         Some(&grille),
+        &commentaires_vide(),
         &|_| false,
         &_cmd_tx,
     );
@@ -1309,6 +1334,7 @@ fn budget_edition_consomme_les_lettres_comme_du_texte() {
         key(KeyCode::Char('r'), KeyModifiers::NONE),
         &mut etat,
         Some(&grille),
+        &commentaires_vide(),
         &|_| false,
         &_cmd_tx,
     );
@@ -1330,6 +1356,7 @@ fn budget_rendu_en_edition_ne_panique_pas() {
         key(KeyCode::Char('e'), KeyModifiers::NONE),
         &mut etat,
         Some(&grille),
+        &commentaires_vide(),
         &|_| false,
         &_cmd_tx,
     );
@@ -1340,10 +1367,272 @@ fn budget_rendu_en_edition_ne_panique_pas() {
             buffer_rect(),
             Some(&grille),
             &mut etat,
+            &commentaires_vide(),
             &|_| false,
             &mut Vec::new(),
         );
     });
+}
+
+// ------------------------------------------------- Commentaires budgétaires ---
+
+#[test]
+fn budget_c_ouvre_le_commentaire_pre_rempli_du_ledger() {
+    // Le commentaire vit dans le ledger (lignes `;`) : `c` ouvre l'éditeur
+    // pré-rempli avec la note lue, sans écrire.
+    let grille = grille_essai();
+    let mut etat = budget::UiState::nouveau(2026);
+    let (_cmd_tx, _cmd_rx) = channel::<household_gui::worker::Command>();
+    let commentaires = BTreeMap::from([(
+        "Expenses:Alimentation:Courses".to_string(),
+        "Courses hebdo du foyer".to_string(),
+    )]);
+
+    let action = budget::on_key(
+        key(KeyCode::Char('c'), KeyModifiers::NONE),
+        &mut etat,
+        Some(&grille),
+        &commentaires,
+        &|_| false,
+        &_cmd_tx,
+    );
+
+    assert!(action.is_none(), "'c' doit seulement ouvrir l'éditeur");
+    let edition = etat
+        .edition_commentaire
+        .as_ref()
+        .expect("édition de commentaire ouverte");
+    assert_eq!(edition.ligne, 0);
+    assert_eq!(
+        edition.input.value, "Courses hebdo du foyer",
+        "pré-rempli avec la note du ledger"
+    );
+    assert!(edition.input.focused, "le caret est rendu");
+}
+
+#[test]
+fn budget_commentaire_esc_annule_et_entree_produit_l_action() {
+    let grille = grille_essai();
+    let mut etat = budget::UiState::nouveau(2026);
+    let (_cmd_tx, _cmd_rx) = channel::<household_gui::worker::Command>();
+    let commentaires = commentaires_vide();
+
+    budget::on_key(
+        key(KeyCode::Char('c'), KeyModifiers::NONE),
+        &mut etat,
+        Some(&grille),
+        &commentaires,
+        &|_| false,
+        &_cmd_tx,
+    );
+    etat.edition_commentaire.as_mut().unwrap().input.value = "  ;  note du foyer ".to_string();
+
+    // Esc : aucune action, édition fermée, rien d'écrit.
+    let action = budget::on_key(
+        key(KeyCode::Esc, KeyModifiers::NONE),
+        &mut etat,
+        Some(&grille),
+        &commentaires,
+        &|_| false,
+        &_cmd_tx,
+    );
+    assert!(action.is_none(), "Esc annule sans écrire");
+    assert!(etat.edition_commentaire.is_none());
+
+    // Ré-ouverture, validation : l'action porte le texte nettoyé.
+    budget::on_key(
+        key(KeyCode::Char('c'), KeyModifiers::NONE),
+        &mut etat,
+        Some(&grille),
+        &commentaires,
+        &|_| false,
+        &_cmd_tx,
+    );
+    etat.edition_commentaire.as_mut().unwrap().input.value = "note du foyer".to_string();
+    let action = budget::on_key(
+        key(KeyCode::Enter, KeyModifiers::NONE),
+        &mut etat,
+        Some(&grille),
+        &commentaires,
+        &|_| false,
+        &_cmd_tx,
+    );
+    let Some(budget::ActionBudget::Commentaire {
+        annee,
+        compte,
+        texte,
+    }) = action
+    else {
+        panic!("Entrée valide le commentaire : {action:?}");
+    };
+    assert_eq!(annee, 2026);
+    assert_eq!(compte, "Expenses:Alimentation:Courses");
+    assert_eq!(
+        texte, "note du foyer",
+        "texte nettoyé (un « ; » de tête peut être conservé tel quel côté writer)"
+    );
+    assert!(etat.edition_commentaire.is_none(), "l'édition est fermée");
+
+    // Texte vide = suppression (l'action part quand même : le writer sait
+    // retirer le bloc `;`).
+    budget::on_key(
+        key(KeyCode::Char('c'), KeyModifiers::NONE),
+        &mut etat,
+        Some(&grille),
+        &commentaires,
+        &|_| false,
+        &_cmd_tx,
+    );
+    etat.edition_commentaire.as_mut().unwrap().input.value = "   ".to_string();
+    let action = budget::on_key(
+        key(KeyCode::Enter, KeyModifiers::NONE),
+        &mut etat,
+        Some(&grille),
+        &commentaires,
+        &|_| false,
+        &_cmd_tx,
+    );
+    assert_eq!(
+        action,
+        Some(budget::ActionBudget::Commentaire {
+            annee: 2026,
+            compte: "Expenses:Alimentation:Courses".to_string(),
+            texte: String::new(),
+        }),
+        "texte blanc → suppression (chaîne vide)"
+    );
+}
+
+#[test]
+fn budget_commentaire_consomme_les_lettres_comme_du_texte() {
+    // Une note peut contenir r, l, e, x… : pendant l'édition du
+    // commentaire, ces lettres sont du texte, pas des commandes globales.
+    let grille = grille_essai();
+    let mut etat = budget::UiState::nouveau(2026);
+    let (_cmd_tx, _cmd_rx) = channel::<household_gui::worker::Command>();
+    let commentaires = commentaires_vide();
+
+    budget::on_key(
+        key(KeyCode::Char('c'), KeyModifiers::NONE),
+        &mut etat,
+        Some(&grille),
+        &commentaires,
+        &|_| false,
+        &_cmd_tx,
+    );
+    let action = budget::on_key(
+        key(KeyCode::Char('r'), KeyModifiers::NONE),
+        &mut etat,
+        Some(&grille),
+        &commentaires,
+        &|_| false,
+        &_cmd_tx,
+    );
+    assert!(action.is_none());
+    assert_eq!(
+        etat.edition_commentaire.as_ref().unwrap().input.value,
+        "r",
+        "la lettre est du texte de note"
+    );
+}
+
+#[test]
+fn budget_bande_de_commentaire_rendue_sous_la_grille() {
+    // La note de la ligne sélectionnée s'affiche en bande sous la grille,
+    // hors édition ; en édition, le champ prend la bande avec caret.
+    let grille = grille_essai();
+    let mut etat = budget::UiState::nouveau(2026);
+    let commentaires = BTreeMap::from([(
+        "Expenses:Alimentation:Courses".to_string(),
+        "Courses hebdo du foyer".to_string(),
+    )]);
+
+    let rendu = |etat: &mut budget::UiState| {
+        let area = Rect::new(0, 0, 100, 28);
+        let backend = TestBackend::new(area.width, area.height);
+        let mut terminal = ratatui::Terminal::new(backend).unwrap();
+        terminal
+            .draw(|frame| {
+                budget::afficher(
+                    frame,
+                    area,
+                    Some(&grille),
+                    etat,
+                    &commentaires,
+                    &|_| false,
+                    &mut Vec::new(),
+                );
+            })
+            .unwrap();
+        terminal
+            .backend()
+            .buffer()
+            .content()
+            .iter()
+            .map(|c| c.symbol().to_string())
+            .collect::<Vec<_>>()
+            .join("")
+    };
+
+    let texte = rendu(&mut etat);
+    assert!(
+        texte.contains("Courses hebdo du foyer"),
+        "la note est affichée en bande — {texte:?}"
+    );
+    assert!(texte.contains("c : éditer"), "l'affordance est affichée");
+
+    // En édition, le champ et son affordance prennent la bande.
+    let (_cmd_tx, _cmd_rx) = channel::<household_gui::worker::Command>();
+    budget::on_key(
+        key(KeyCode::Char('c'), KeyModifiers::NONE),
+        &mut etat,
+        Some(&grille),
+        &commentaires,
+        &|_| false,
+        &_cmd_tx,
+    );
+    let texte = rendu(&mut etat);
+    assert!(
+        texte.contains("Entrée : valider"),
+        "le prompt d'édition est affiché en bande — {texte:?}"
+    );
+}
+
+#[test]
+fn budget_commentaire_absent_bande_par_defaut() {
+    // Sans note pour le compte, la bande propose d'en ajouter.
+    let grille = grille_essai();
+    let mut etat = budget::UiState::nouveau(2026);
+    let commentaires = commentaires_vide();
+
+    let area = Rect::new(0, 0, 100, 28);
+    let backend = TestBackend::new(area.width, area.height);
+    let mut terminal = ratatui::Terminal::new(backend).unwrap();
+    terminal
+        .draw(|frame| {
+            budget::afficher(
+                frame,
+                area,
+                Some(&grille),
+                &mut etat,
+                &commentaires,
+                &|_| false,
+                &mut Vec::new(),
+            );
+        })
+        .unwrap();
+    let texte = terminal
+        .backend()
+        .buffer()
+        .content()
+        .iter()
+        .map(|c| c.symbol().to_string())
+        .collect::<Vec<_>>()
+        .join("");
+    assert!(
+        texte.contains("aucun commentaire"),
+        "la bande invite à en ajouter — {texte:?}"
+    );
 }
 
 // ----------------------------------------------------------------- Graphiques ---

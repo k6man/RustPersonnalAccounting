@@ -129,6 +129,102 @@ fn replace_amount_in_line(line: &str, new_amount: Decimal) -> Option<String> {
     Some(out)
 }
 
+/// Écrit le commentaire d'une ligne de grille (compte) dans le fichier
+/// budget de l'année : une ligne `; note` **immédiatement au-dessus** de la
+/// première directive `custom "budget"` du compte (cf. [`crate::commentaires`]
+/// pour la convention de lecture). Un commentaire vide (après nettoyage)
+/// supprime le bloc existant ; le reste du fichier est préservé à l'octet.
+/// Refuse si le compte n'a aucune directive dans le fichier de l'année.
+///
+/// Le snapshot doit être **à jour du fichier** : les spans qu'il porte sont
+/// des offsets d'octets, toute écriture simultanée depuis un snapshot plus
+/// ancien corromprait le patch — rechargez le snapshot après chaque
+/// écriture (c'est ce que fait le worker GUI à chaque commande).
+pub fn set_comment(
+    snapshot: &Snapshot,
+    year: i16,
+    account: &str,
+    comment: &str,
+) -> Result<Snapshot, CoreError> {
+    let main = snapshot.main.clone();
+    let note = crate::commentaires::nettoie(comment);
+
+    // Première directive budget du compte dans l'année : c'est à elle que la
+    // ligne de grille correspond, et c'est là que le commentaire s'attache.
+    let found = snapshot
+        .entries()
+        .iter()
+        .position(|entry| {
+            matches!(&entry.value, Directive::Custom(custom)
+                if custom.custom_type == "budget"
+                    && custom.date.year() == year
+                    && matches!(custom.values.first(), Some(MetaValue::Account(name)) if name.as_str() == account))
+        })
+        .ok_or_else(|| {
+            CoreError::Writer(format!(
+                "aucune directive budget de {account} en {year} : commentaire refusé"
+            ))
+        })?;
+
+    let (_file_id, span) = snapshot.span_of(found)?;
+    let source = snapshot.source_of(found)?;
+    // La directive visée doit vivre dans le fichier de l'année demandée
+    // (comparaison canonique : la copie scratch a des chemins absolus, le
+    // résolu aussi).
+    let attendu = budget_file(&main, year);
+    let meme_fichier = match (
+        std::fs::canonicalize(&source.file),
+        std::fs::canonicalize(&attendu),
+    ) {
+        (Ok(a), Ok(b)) => a == b,
+        _ => source.file == attendu,
+    };
+    if !meme_fichier {
+        return Err(CoreError::Writer(format!(
+            "directive budget de {account} en {year} hors du fichier de l'année ({})",
+            source.file.display()
+        )));
+    }
+
+    edit_ledger_file(&main, source.file, move |old| {
+        let (start, _body, _after) = household_core::writer::split_directive_block(old, span);
+        // Bloc de lignes `;` contiguës immédiatement au-dessus de la
+        // directive : un blanc ou un `#` casse le rattachement (même
+        // convention que la lecture).
+        let mut bloc_debut = start;
+        let mut cursor = start;
+        while cursor > 0 {
+            let nl = old[..cursor - 1].rfind('\n').map_or(0, |i| i + 1);
+            let ligne = old[nl..cursor - 1].trim_end();
+            if ligne.trim_start().starts_with(';') {
+                bloc_debut = nl;
+                cursor = nl;
+            } else {
+                break;
+            }
+        }
+        let bloc_actuel = &old[bloc_debut..start];
+        if note.is_empty() {
+            if bloc_actuel.is_empty() {
+                // Supprimer un commentaire absent : no-op (la revalidation
+                // du writer reste utile, on ne court-circuite pas).
+                return Ok(Some(old.to_string()));
+            }
+            return Ok(Some(format!("{}{}", &old[..bloc_debut], &old[start..])));
+        }
+        let bloc = format!("; {note}\n");
+        if bloc_actuel == bloc {
+            return Ok(Some(old.to_string()));
+        }
+        Ok(Some(format!(
+            "{}{}{}",
+            &old[..bloc_debut],
+            bloc,
+            &old[start..]
+        )))
+    })
+}
+
 /// Génère le fichier d'une année complète (duplication) : crée
 /// `budgets/YYYY.beancount` avec les directives fournies **et** l'include
 /// dans `main.beancount`, en une mutation unique. Refuse d'écraser un

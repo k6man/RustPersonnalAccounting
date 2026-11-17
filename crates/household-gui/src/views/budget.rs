@@ -11,6 +11,7 @@ use ratatui::{
     style::{Color, Modifier, Style},
     widgets::{Block, Borders, Cell, Paragraph, Row, Table},
 };
+use std::collections::BTreeMap;
 
 use crate::app::ActionClique;
 use crate::fmt::{eur, nombre};
@@ -30,6 +31,12 @@ pub enum ActionBudget {
         date: NaiveDate,
         compte: String,
         montant: Decimal,
+    },
+    /// Commentaire d'une ligne (compte) : texte vide = suppression.
+    Commentaire {
+        annee: i16,
+        compte: String,
+        texte: String,
     },
     /// Générer l'année cible par duplication.
     GenererAnnee {
@@ -56,6 +63,10 @@ pub struct UiState {
     /// hors édition. Validée par Entrée uniquement : tant qu'elle est
     /// ouverte, aucune écriture n'a lieu.
     pub edition: Option<EditionCellule>,
+    /// Édition du commentaire de la ligne sélectionnée (toutes les touches
+    /// y vont) — `None` hors édition. Validée par Entrée, annulée par Esc ;
+    /// texte vide (après nettoyage) = suppression du commentaire.
+    pub edition_commentaire: Option<EditionCommentaire>,
 }
 
 /// Édition d'une cellule budgétaire.
@@ -69,6 +80,15 @@ pub struct EditionCellule {
     pub input: TextInput,
 }
 
+/// Édition du commentaire d'une ligne budgétaire.
+#[derive(Debug, Clone)]
+pub struct EditionCommentaire {
+    /// Ligne de la grille dont on édite le commentaire.
+    pub ligne: usize,
+    /// Champ de saisie du texte, pré-rempli avec la note existante.
+    pub input: TextInput,
+}
+
 impl UiState {
     pub fn nouveau(annee: i16) -> Self {
         Self {
@@ -77,6 +97,7 @@ impl UiState {
             mois_selectionne: 0,
             posting_selectionne: 0,
             edition: None,
+            edition_commentaire: None,
         }
     }
 
@@ -134,12 +155,14 @@ fn style_selection() -> Style {
         .add_modifier(Modifier::BOLD)
 }
 
-/// Dessine l'écran budget dans la zone `area`.
+/// Dessine l'écran budget dans la zone `area`. `commentaires` est la map
+/// compte → note de l'année affichée (lue depuis le ledger).
 pub fn afficher(
     f: &mut Frame,
     area: Rect,
     grille: Option<&BudgetGrid>,
     etat: &mut UiState,
+    commentaires: &BTreeMap<String, String>,
     _rollover_actif: &dyn Fn(&str) -> bool,
     zones_cliquables: &mut Vec<(Rect, ActionClique)>,
 ) -> Option<ActionBudget> {
@@ -151,6 +174,7 @@ pub fn afficher(
             Constraint::Length(1), // titre avec année
             Constraint::Length(1), // aide
             Constraint::Min(0),    // tableau
+            Constraint::Length(1), // bande de commentaire de la ligne active
         ])
         .split(area);
 
@@ -169,7 +193,7 @@ pub fn afficher(
 
     // 2. Aide rapide.
     let aide = Paragraph::new(
-        " flèches : naviguer · e : éditer la cellule · Entrée : valider · Esc : annuler",
+        " flèches : naviguer · e : éditer la cellule · c : commentaire · Entrée : valider · Esc : annuler",
     )
     .style(Style::default().fg(Color::Gray));
     f.render_widget(aide, chunks[1]);
@@ -338,18 +362,81 @@ pub fn afficher(
         ));
     }
 
+    // Bande de commentaire de la ligne sélectionnée, sous la grille : la
+    // note telle qu'elle vit dans le ledger (lignes `;`), ou le prompt de
+    // saisie pendant l'édition. Une seule ligne : rien ne bouge dans la
+    // grille elle-même (largeurs préservées).
+    let ligne_active = grille.rows.get(ligne_idx);
+    if let Some(ed) = etat.edition_commentaire.as_ref() {
+        // Saisie en cours : le champ prend la bande, avec caret, en bleu.
+        let bande = Paragraph::new(format!(
+            " 💬 {}  (Entrée : valider, Esc : annuler) ",
+            ed.input.ligne_avec_curseur()
+        ))
+        .style(
+            Style::default()
+                .bg(Color::Blue)
+                .fg(Color::White)
+                .add_modifier(Modifier::BOLD),
+        );
+        f.render_widget(bande, chunks[3]);
+    } else {
+        let note = ligne_active.and_then(|l| commentaires.get(l.account.as_str()));
+        let texte = match note {
+            Some(n) => format!(" 💬 «{n}»  (c : éditer) "),
+            None => " 💬 aucun commentaire  (c : en ajouter) ".to_string(),
+        };
+        let bande = Paragraph::new(texte).style(Style::default().fg(Color::Gray));
+        f.render_widget(bande, chunks[3]);
+    }
+
     None
 }
 
-/// Gère un événement clavier pour le budget.
+/// Gère un événement clavier pour le budget. `commentaires` est la map
+/// compte → note de l'année affichée (pré-remplissage de l'éditeur).
 pub fn on_key(
     key: KeyEvent,
     etat: &mut UiState,
     grille: Option<&BudgetGrid>,
+    commentaires: &BTreeMap<String, String>,
     _config: &dyn Fn(&str) -> bool,
     _cmd_tx: &std::sync::mpsc::Sender<crate::worker::Command>,
 ) -> Option<ActionBudget> {
     use crossterm::event::KeyCode;
+
+    // Édition du commentaire ouverte : toutes les touches y vont (le texte
+    // peut contenir r, l, e, x…). Entrée valide (texte nettoyé, vide =
+    // suppression), Esc annule sans écriture.
+    if let Some(ed) = &mut etat.edition_commentaire {
+        if ed.input.on_key(key) {
+            return None;
+        }
+        return match key.code {
+            KeyCode::Enter => {
+                let Some(grille) = grille else {
+                    etat.edition_commentaire = None;
+                    return None;
+                };
+                let Some(ligne) = grille.rows.get(ed.ligne) else {
+                    etat.edition_commentaire = None;
+                    return None;
+                };
+                let action = ActionBudget::Commentaire {
+                    annee: etat.annee,
+                    compte: ligne.account.clone(),
+                    texte: household_budget::nettoie(&ed.input.value),
+                };
+                etat.edition_commentaire = None;
+                Some(action)
+            }
+            KeyCode::Esc => {
+                etat.edition_commentaire = None;
+                None
+            }
+            _ => None,
+        };
+    }
 
     // Édition en cours : toutes les touches y vont (un montant peut
     // contenir r, l, x…). Entrée valide, Esc annule sans écriture ; un
@@ -415,6 +502,26 @@ pub fn on_key(
         }
         KeyCode::Right => {
             etat.mois_suivant();
+            None
+        }
+        KeyCode::Char('c') => {
+            // Ouvre l'éditeur de commentaire sur la ligne sélectionnée,
+            // pré-rempli avec la note existante (lecture depuis le ledger).
+            // Aucune écriture à ce stade : la commande ne part qu'à la
+            // validation (Entrée).
+            let grille = grille?;
+            if grille.rows.is_empty() {
+                return None;
+            }
+            let ligne_idx = etat.ligne_index(Some(grille));
+            let compte = &grille.rows[ligne_idx].account;
+            let mut input =
+                TextInput::with_value(commentaires.get(compte).cloned().unwrap_or_default());
+            input.set_focused(true);
+            etat.edition_commentaire = Some(EditionCommentaire {
+                ligne: ligne_idx,
+                input,
+            });
             None
         }
         KeyCode::Char('e') => {

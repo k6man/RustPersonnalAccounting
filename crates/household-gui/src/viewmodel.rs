@@ -31,6 +31,11 @@ pub struct UiData {
     pub payees: Vec<(String, usize)>,
     /// Grilles budgétaires par année budgétée (éditeur de budget).
     pub grilles: BTreeMap<i16, household_budget::BudgetGrid>,
+    /// Commentaires de lignes budgétaires, par année puis par compte —
+    /// lus depuis les lignes `;` des fichiers `budgets/AAAA.beancount`
+    /// (cf. `household_budget::commentaires`). Échec de lecture = map vide
+    /// (les commentaires sont un confort, jamais un blocage).
+    pub commentaires_budget: BTreeMap<i16, BTreeMap<String, String>>,
     /// Directives `custom "budget"` du ledger, triées — base du diff et du
     /// sélecteur d'années.
     pub directives_budget: Vec<DirectiveBudget>,
@@ -408,6 +413,17 @@ pub fn build(snapshot: &Snapshot, aujourdhui: NaiveDate) -> Result<UiData, Strin
         .map(|grille| grille.warnings.clone())
         .unwrap_or_default();
 
+    // Commentaires de lignes budgétaires : lecture directe des fichiers
+    // `budgets/AAAA.beancount` (les lignes `;` ne sont pas exposées par le
+    // snapshot rustledger =0.24.0). Lecture seule, sans blocage.
+    let mut commentaires_budget = BTreeMap::new();
+    for annee_budget in &annees {
+        let chemin = household_budget::budget_file(&snapshot.main, *annee_budget);
+        if let Ok(texte) = std::fs::read_to_string(&chemin) {
+            commentaires_budget.insert(*annee_budget, household_budget::commentaires(&texte));
+        }
+    }
+
     Ok(UiData {
         main: snapshot.main.clone(),
         charge_le: horodatage(),
@@ -432,6 +448,7 @@ pub fn build(snapshot: &Snapshot, aujourdhui: NaiveDate) -> Result<UiData, Strin
         comptes: comptes_du_plan(snapshot),
         payees: snapshot.payees(),
         grilles,
+        commentaires_budget,
         directives_budget: directives_budget(&directives),
         rapports,
         graphiques,

@@ -1,5 +1,6 @@
 //! Application TUI ratatui : état, canaux, écrans, bannière d'erreurs.
 
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::mpsc::{Receiver, Sender};
@@ -421,11 +422,12 @@ impl App {
                 .donnees
                 .as_ref()
                 .and_then(|d| d.grilles.get(&self.budget.annee));
-            // Édition de cellule ouverte : toutes les touches y vont (le
-            // texte d'un montant peut contenir r, l, e, x…) et sont
+            // Édition (cellule ou commentaire) ouverte : toutes les touches
+            // y vont (le texte peut contenir r, l, e, x…) et sont
             // consommées. Sinon, seules navigation/édition sont prises, les
             // autres (q, r, l) restent globales.
             let pour_le_budget = self.budget.edition.is_some()
+                || self.budget.edition_commentaire.is_some()
                 || matches!(
                     key.code,
                     KeyCode::Up
@@ -433,12 +435,20 @@ impl App {
                         | KeyCode::Left
                         | KeyCode::Right
                         | KeyCode::Char('e')
+                        | KeyCode::Char('c')
                 );
             if pour_le_budget {
+                let vide = BTreeMap::new();
+                let map = self
+                    .donnees
+                    .as_ref()
+                    .and_then(|d| d.commentaires_budget.get(&self.budget.annee))
+                    .unwrap_or(&vide);
                 let action = budget::on_key(
                     key,
                     &mut self.budget,
                     grille,
+                    map,
                     &|famille| self.config.rollover_actif(famille),
                     &self.cmd_tx,
                 );
@@ -460,6 +470,23 @@ impl App {
                             date,
                             compte,
                             montant,
+                        })
+                        .ok();
+                } else if let Some(budget::ActionBudget::Commentaire {
+                    annee,
+                    compte,
+                    texte,
+                }) = action
+                {
+                    // Idem : Entrée seulement (l'ouverture, l'annulation
+                    // Esc ne produisent aucune commande).
+                    self.en_chargement = true;
+                    self.flash = None;
+                    self.cmd_tx
+                        .send(Command::CommentaireBudget {
+                            annee,
+                            compte,
+                            texte,
                         })
                         .ok();
                 }
@@ -666,6 +693,21 @@ impl App {
                         date,
                         compte,
                         montant,
+                    })
+                    .ok();
+            }
+            crate::views::budget::ActionBudget::Commentaire {
+                annee,
+                compte,
+                texte,
+            } => {
+                self.en_chargement = true;
+                self.flash = None;
+                self.cmd_tx
+                    .send(Command::CommentaireBudget {
+                        annee,
+                        compte,
+                        texte,
                     })
                     .ok();
             }
@@ -926,11 +968,14 @@ impl App {
                 );
             }
             Onglet::Budget => {
+                let annee = self.budget.annee;
+                let vide = BTreeMap::new();
                 budget::afficher(
                     f,
                     area,
-                    donnees.grilles.get(&self.budget.annee),
+                    donnees.grilles.get(&annee),
                     &mut self.budget,
+                    donnees.commentaires_budget.get(&annee).unwrap_or(&vide),
                     &|famille| self.config.rollover_actif(famille),
                     &mut self.zones_cliquables,
                 );
