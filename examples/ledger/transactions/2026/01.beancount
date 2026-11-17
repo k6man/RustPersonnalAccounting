@@ -3,9 +3,9 @@
 
 # ---- Prélèvements automatiques ---------------------------------------------
 2026-01-02 * "Propriete Paris XII" "Loyer et charges"
-  Assets:Banque:CompteCourant     -1120.50 EUR
-  Expenses:Logement:Loyer-Credit   1050.00 EUR
-  Expenses:Logement:Charges-Copro    70.50 EUR
+  Assets:Banque:CompteCourant      -1120.50 EUR
+  Expenses:Logement:Loyer-Credit    1050.00 EUR
+  Expenses:Logement:Charges-Copro     70.50 EUR
 
 2026-01-02 * "Orange" "Accès internet janvier"
   Assets:Banque:CompteCourant      -31.99 EUR
