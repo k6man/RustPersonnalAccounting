@@ -173,7 +173,7 @@ impl App {
             saisie_en_vol: false,
             tableau_de_bord: crate::views::dashboard::UiState::default(),
             journal: crate::views::journal::UiState::new(),
-            saisie: crate::views::saisie::UiState::default(),
+            saisie: crate::views::saisie::UiState::nouveau(crate::worker::aujourd_hui()),
             budget: crate::views::budget::UiState::nouveau(crate::worker::aujourd_hui().year()),
             git: crate::views::git::UiState::nouveau(),
             graphiques: crate::views::graphiques::UiState::nouveau(),
@@ -542,6 +542,13 @@ impl App {
             }
             KeyCode::Char('r') => self.demander_rechargement(),
             KeyCode::Char('l') => self.params_ledger = !self.params_ledger,
+            KeyCode::Char('n') => {
+                // Nouvelle saisie : créer un brouillon vierge daté du jour et
+                // passer à l'onglet Saisie.
+                self.saisie = crate::views::saisie::UiState::nouveau(crate::worker::aujourd_hui());
+                self.saisie_en_vol = false;
+                self.changer_ecran(Onglet::Saisie.index());
+            }
             _ => {}
         }
 

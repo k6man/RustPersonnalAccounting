@@ -25,8 +25,8 @@
   Expenses:Logement:Electricite     89.90 EUR
 
 2026-02-03 * "Régie de l'eau" "Eau février"
-  Assets:Banque:CompteCourant      -22.40 EUR
-  Expenses:Logement:Eau             22.40 EUR
+  Assets:Banque:CompteCourant  -22.40 EUR
+  Expenses:Logement:Eau         22.40 EUR
 
 2026-02-05 * "Mutuelle" "Cotisation février"
   Assets:Banque:CompteCourant     -156.20 EUR

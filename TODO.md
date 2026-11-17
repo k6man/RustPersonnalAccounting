@@ -276,6 +276,23 @@ les lignes rendues, pas de fenêtre glissante). Livré :
   rendues dans la fenêtre (index absolu préservé).
 - [x] **Tests** : existants passent (17 tests budget TUI).
 
+**Date par défaut = aujourd'hui dans la saisie (2026-11-17)** — demande
+d'usage : lors de la saisie d'une opération (onglet 3), la date doit être
+pré-remplie avec la date du jour. Livré :
+
+- [x] **Initialisation au démarrage** : `App::new` crée maintenant
+  `saisie: UiState::nouveau(aujourd_hui())` au lieu de `Default::default()`,
+  donc l'écran Saisie affiche la date du jour dès l'ouverture (même sans
+  avoir fait d'action préalable).
+- [x] **Touche `n` globale** : depuis n'importe quel écran (hors champs
+  texte), `n` crée un nouveau brouillon vierge daté du jour et bascule sur
+  l'onglet Saisie. Utile depuis le Journal (F2) pour saisir vite une
+  opération après consultation.
+- [x] **Réinitialisation après actions** : les chemins existants
+  (après écriture réussie, après Annuler) recréent déjà un brouillon avec
+  `aujourd_hui()` — inchangés.
+- [x] Tests : existants passent, `just check` ✓.
+
 **Prochaine action : usage réel** (saisie quotidienne, budgets 2027 via
 l'éditeur).
 
