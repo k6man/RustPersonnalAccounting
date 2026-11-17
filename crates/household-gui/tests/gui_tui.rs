@@ -804,6 +804,104 @@ fn budget_navigue_lignes_et_mois() {
 }
 
 #[test]
+fn budget_croix_de_selection_visible() {
+    // La sélection doit se lire en 2D : cellule active en bleu, en-tête du
+    // mois sélectionné marqué, ligne en gris discret — l'ancien REVERSED
+    // intégral marquait la ligne mais pas le mois.
+    let grille = grille_essai();
+    let mut etat = budget::UiState::nouveau(2026);
+    etat.mois_selectionne = 1; // Fév, pour ne pas tomber sur Jan
+    let area = Rect::new(0, 0, 80, 24);
+    let backend = TestBackend::new(area.width, area.height);
+    let mut terminal = ratatui::Terminal::new(backend).unwrap();
+    terminal
+        .draw(|frame| {
+            budget::afficher(
+                frame,
+                area,
+                Some(&grille),
+                &mut etat,
+                &|_| false,
+                &mut Vec::new(),
+            );
+        })
+        .unwrap();
+    let contenu = terminal.backend().buffer().content().to_vec();
+
+    // Première occurrence d'une séquence de symboles d'un caractère.
+    fn position(contenu: &[ratatui::buffer::Cell], seq: &str) -> Option<usize> {
+        let lettres: Vec<char> = seq.chars().collect();
+        contenu.windows(lettres.len()).position(|fenetre| {
+            fenetre
+                .iter()
+                .zip(&lettres)
+                .all(|(cellule, attendu)| cellule.symbol() == attendu.to_string())
+        })
+    }
+
+    // 1. Les cellules mensuelles « 900 » : la ligne sélectionnée est
+    //    grisée (Jan, première occurrence) et la cellule active Fév est
+    //    en bleu. Sur 80 colonnes les cellules mensuelles sont clippées
+    //    (« 900,00 » → « 900 ») mais lisible.
+    let pos_900 = position(&contenu, "900").expect("cellule 900 rendue");
+    assert_eq!(
+        contenu[pos_900].bg,
+        ratatui::style::Color::DarkGray,
+        "la ligne sélectionnée est grisée (Jan, première occurrence)"
+    );
+    let bleue = contenu.windows(3).any(|fenetre| {
+        fenetre
+            .iter()
+            .zip("900".chars())
+            .all(|(c, a)| c.symbol() == a.to_string())
+            && fenetre[0].bg == ratatui::style::Color::Blue
+    });
+    assert!(bleue, "la cellule sélectionnée est en fond bleu");
+
+    // 2. L'en-tête « Fév » porte le même marqueur bleu — « Fév » apparaît
+    //    aussi dans le titre (position complète), on cherche donc une
+    //    occurrence bleue ; « Mar » n'existe que dans l'en-tête.
+    let fev_marque = contenu.windows(3).any(|fenetre| {
+        fenetre
+            .iter()
+            .zip("Fév".chars())
+            .all(|(c, a)| c.symbol() == a.to_string())
+            && fenetre[0].bg == ratatui::style::Color::Blue
+    });
+    assert!(fev_marque, "l'en-tête du mois sélectionné est marqué");
+    let pos_mar = position(&contenu, "Mar").expect("en-tête Mar rendu");
+    assert_ne!(contenu[pos_mar].bg, ratatui::style::Color::Blue);
+
+    // 3. La ligne sélectionnée est en gris discret (le compte commence la
+    //    ligne) — le titre contient aussi le compte, on cherche donc une
+    //    occurrence grisée ; plus aucun REVERSED dans tout l'écran.
+    let ligne_grise = contenu
+        .iter()
+        .any(|c| c.symbol() == "E" && c.bg == ratatui::style::Color::DarkGray);
+    assert!(
+        ligne_grise,
+        "la ligne sélectionnée est en fond gris discret"
+    );
+    assert!(
+        contenu
+            .iter()
+            .all(|c| !c.modifier.contains(ratatui::style::Modifier::REVERSED)),
+        "plus de vidéo inversée sur la ligne"
+    );
+
+    // 4. Le titre porte la position complète (lisible sans couleur).
+    let texte: String = contenu
+        .iter()
+        .map(|c| c.symbol().to_string())
+        .collect::<Vec<_>>()
+        .join("");
+    assert!(
+        texte.contains("ligne 1/1 · Fév"),
+        "titre avec position complète — buffer : {texte:?}"
+    );
+}
+
+#[test]
 fn budget_rendu_terminal_etroit_ne_panique_pas() {
     // Régression : largeurs fixes ≈183 colonnes — vérifie que la grille
     // proportionnelle tient (et se dégrade proprement) sur 80 colonnes,

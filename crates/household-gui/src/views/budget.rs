@@ -123,6 +123,17 @@ impl UiState {
     }
 }
 
+/// Style de la croix de sélection (cellule active + en-tête du mois
+/// sélectionné) : bleu + blanc + gras, cohérent avec l'éditeur de cellule
+/// qui s'ouvre sur cette même cellule. La ligne est marquée à part, en
+/// gris discret (voir `afficher`).
+fn style_selection() -> Style {
+    Style::default()
+        .bg(Color::Blue)
+        .fg(Color::White)
+        .add_modifier(Modifier::BOLD)
+}
+
 /// Dessine l'écran budget dans la zone `area`.
 pub fn afficher(
     f: &mut Frame,
@@ -181,13 +192,22 @@ pub fn afficher(
     let mois_idx = etat.mois_selectionne;
     let edition = etat.edition.as_ref();
 
-    // En-têtes de colonnes : Poste | Jan | Fév | ... | Déc | Total | Écart
+    // En-têtes de colonnes : Poste | Jan | Fév | ... | Déc | Total | Écart.
+    // Croix de sélection : l'en-tête du mois sélectionné porte le même
+    // marqueur bleu que la cellule — la colonne se repère d'un coup d'œil
+    // depuis le haut du tableau, même quand la ligne est loin.
     let mois_noms = [
         "Jan", "Fév", "Mar", "Avr", "Mai", "Juin", "Jui", "Aoû", "Sep", "Oct", "Nov", "Déc",
     ];
-    let header_cells: Vec<String> = std::iter::once("Poste".to_string())
-        .chain(mois_noms.iter().map(|m| m.to_string()))
-        .chain(["Total", "Écart"].iter().map(|s| s.to_string()))
+    let header_cells: Vec<Cell> = std::iter::once(Cell::from("Poste"))
+        .chain(mois_noms.iter().enumerate().map(|(m, nom)| {
+            if m == mois_idx {
+                Cell::from(*nom).style(style_selection())
+            } else {
+                Cell::from(*nom)
+            }
+        }))
+        .chain([Cell::from("Total"), Cell::from("Écart")])
         .collect();
 
     let rows: Vec<Row> = lignes
@@ -196,7 +216,13 @@ pub fn afficher(
         .map(|(i, ligne)| {
             let selected = i == ligne_idx;
             let style = if selected {
-                Style::default().add_modifier(Modifier::REVERSED)
+                // Croix de sélection : ligne en gris discret — le REVERSED
+                // intégral écrasait le rouge de l'écart et ne disait rien
+                // du mois. La cellule active (ci-dessous) porte le marqueur
+                // fort ; `Cell::render` applique son style APRÈS celui de
+                // la rangée (ratatui 0.26.3) : les champs `None` héritent
+                // du fond gris, le bleu de la cellule l'écrase.
+                Style::default().bg(Color::DarkGray)
             } else {
                 Style::default()
             };
@@ -223,6 +249,13 @@ pub fn afficher(
                         .fg(if valide { Color::White } else { Color::Red })
                         .add_modifier(Modifier::BOLD);
                     cells.push(Cell::from(e.input.ligne_avec_curseur()).style(style_cellule));
+                } else if selected && m == mois_idx {
+                    // Cellule active de la croix de sélection (hors édition :
+                    // la cellule éditée porte déjà son propre style bleu).
+                    cells.push(
+                        Cell::from(format!("{:>6}", nombre(cell.budgeted)))
+                            .style(style_selection()),
+                    );
                 } else {
                     cells.push(Cell::from(format!("{:>6}", nombre(cell.budgeted))));
                 }
@@ -260,10 +293,18 @@ pub fn afficher(
             mois_noms[e.mois], compte
         )
     } else {
+        // Position complète dans le titre : lisible même si les couleurs
+        // passent mal sur le terminal de l'utilisateur.
+        let compte = grille
+            .rows
+            .get(ligne_idx)
+            .map_or_else(|| "?".to_string(), |l| l.account.clone());
         format!(
-            " Budget vs réel — mois {:02} (cellule {}) ",
-            mois_idx + 1,
-            mois_noms[mois_idx]
+            " Budget vs réel — ligne {}/{} · {} · {} ",
+            ligne_idx + 1,
+            grille.rows.len(),
+            mois_noms[mois_idx],
+            compte
         )
     };
     let tableau = Table::new(rows, widths)

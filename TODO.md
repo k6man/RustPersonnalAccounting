@@ -136,6 +136,29 @@ maintenant un vrai formulaire :
   3 tests unitaires (Esc retour, Esc neutre sur le Tableau de bord,
   q/Ctrl+C quittent).
 
+**Croix de sélection Budget (2026-11-17)** — retours d'usage : dans la
+grille Budget on ne voyait pas où on se trouvait (la ligne était en
+REVERSED intégral, mais rien ne disait le mois ; le titre seul mentionnait
+« mois 02 »). Livré :
+
+- [x] Cellule active (ligne × mois) en **fond bleu, blanc, gras** — le
+  même style que l'éditeur qui s'ouvre dessus ;
+- [x] En-tête du mois sélectionné portant le même marqueur bleu (la
+  colonne se repère depuis le haut du tableau) ;
+- [x] Ligne sélectionnée en **gris discret** au lieu du REVERSED intégral
+  (qui écrasait le rouge de l'écart) — la croix se lit « ligne grise ∩
+  en-tête marqué = cellule bleue » ;
+- [x] Titre enrichi : ` Budget vs réel — ligne 3/12 · Fév · Expenses:… `
+  (position complète, lisible sans couleur) ;
+- [x] Vérifié dans les sources ratatui 0.26.3 : `Cell::render` applique
+  son style **après** celui de la rangée (`buf.set_style`) — les champs
+  `None` héritent du fond de ligne, le bleu de la cellule l'écrase : le
+  rouge de l'écart reste lisible sur la ligne grisée ;
+- [x] 1 test de rendu (cellule bleue, en-tête marqué, ligne grise, zéro
+  REVERSED, titre complet). *Piège de test documenté : le titre enrichi
+  contient désormais le mois et le compte — chercher des occurrences par
+  propriété (une occurrence bleue), pas la première.*
+
 **Prochaine action : usage réel** (saisie quotidienne, budgets 2027 via
 l'éditeur) — le backlog de la revue TUI est **terminé** (#1 à #9), #10
 (AGENTS.md) livré le 2026-11-17 : la doc décrit désormais la TUI
