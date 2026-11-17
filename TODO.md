@@ -293,6 +293,22 @@ pré-remplie avec la date du jour. Livré :
   `aujourd_hui()` — inchangés.
 - [x] Tests : existants passent, `just check` ✓.
 
+**Navigation Tab / Maj+Tab dans la saisie (2026-11-17)** — signalement
+utilisateur : impossible de revenir sur les champs précédents. Livré :
+
+- [x] **Logique existante confirmée** : `Tab` avance (Date → Flag → Tiers →
+  Libellé → Tags → Liens → Postings → Date), `Maj+Tab` recule (cycle
+  inverse). Le code gère correctement les deux sens.
+- [x] **Test de régression complet** : nouveau test
+  `saisie_navigue_cycle_complet_avec_shift_tab` valide le cycle aller/retour
+  sur les 7 champs y compris Postings.
+- [x] **Pas de régression** : tous les tests passent, `just check` ✓.
+
+> Note : si `Maj+Tab` ne fonctionne pas dans votre terminal, c'est souvent
+> une limitation du terminal/OS (certains n'envoient pas `Shift+Tab` comme
+> événement distinct). Vérifiez la configuration de votre terminal (ex. :
+> iTerm2 « Send escape sequences » pour les modificateurs).
+
 **Prochaine action : usage réel** (saisie quotidienne, budgets 2027 via
 l'éditeur).
 

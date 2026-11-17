@@ -396,6 +396,67 @@ fn saisie_navigue_champs_avec_tab() {
 }
 
 #[test]
+fn saisie_navigue_cycle_complet_avec_shift_tab() {
+    let donnees = donnees_test();
+    let mut etat = saisie::UiState::nouveau("2026-03-15".parse().unwrap());
+    assert_eq!(etat.champ_actif, saisie::Champ::Date);
+
+    // Avance jusqu'à Postings : Date → Flag → Tiers → Libellé → Tags → Liens → Postings
+    for expected in [
+        saisie::Champ::Flag,
+        saisie::Champ::Tiers,
+        saisie::Champ::Libelle,
+        saisie::Champ::Tags,
+        saisie::Champ::Liens,
+        saisie::Champ::Postings,
+    ] {
+        let action = etat.on_key(
+            key(KeyCode::Tab, KeyModifiers::NONE),
+            &donnees.comptes,
+            &donnees.payees,
+        );
+        assert!(action.is_none());
+        assert_eq!(etat.champ_actif, expected);
+    }
+
+    // Un Tab de plus revient à Date (cycle).
+    let action = etat.on_key(
+        key(KeyCode::Tab, KeyModifiers::NONE),
+        &donnees.comptes,
+        &donnees.payees,
+    );
+    assert!(action.is_none());
+    assert_eq!(etat.champ_actif, saisie::Champ::Date);
+
+    // Maj+Tab depuis Date va à Postings (cycle inverse).
+    let action = etat.on_key(
+        key(KeyCode::Tab, KeyModifiers::SHIFT),
+        &donnees.comptes,
+        &donnees.payees,
+    );
+    assert!(action.is_none());
+    assert_eq!(etat.champ_actif, saisie::Champ::Postings);
+
+    // Remonte tout le cycle avec Maj+Tab.
+    for expected in [
+        saisie::Champ::Liens,
+        saisie::Champ::Tags,
+        saisie::Champ::Libelle,
+        saisie::Champ::Tiers,
+        saisie::Champ::Flag,
+        saisie::Champ::Date,
+    ] {
+        let action = etat.on_key(
+            key(KeyCode::Tab, KeyModifiers::SHIFT),
+            &donnees.comptes,
+            &donnees.payees,
+        );
+        assert!(action.is_none());
+        assert_eq!(etat.champ_actif, expected);
+    }
+}
+
+#[test]
 fn saisie_edite_champ_libelle() {
     let donnees = donnees_test();
     let mut etat = saisie::UiState::nouveau("2026-03-15".parse().unwrap());
