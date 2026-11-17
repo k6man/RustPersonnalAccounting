@@ -75,7 +75,7 @@ cargo run -q -p household-core --bin household-cli -- check examples/ledger/main
   (`saisie.rs`) ou dans les autres crates. Pas de logique métier dans les
   vues. Watcher `notify` → Reload (débounce 250 ms).
 - **Écran unique à onglets** : `ecran_actif` dans `app.rs` (index dans
-  `Onglet::TOUS`), Ctrl+1..7 dans la barre du haut ; **Esc = retour au
+  `Onglet::TOUS`), Ctrl+1..7 **ou F1..F7** dans la barre du haut ; **Esc = retour au
   Tableau de bord, jamais quitter** (`q`/Ctrl+C quittent) ; flash en bas
   d'écran (succès 4 s, erreur persistante) ; modale de confirmation de
   suppression. La souris passe par les **zones cliquables enregistrées au
@@ -90,8 +90,8 @@ cargo run -q -p household-core --bin household-cli -- check examples/ledger/main
 
 - **`KeyEventKind::Press` filtré** dans `App::run` : sans filtre, les
   terminaux/OS qui émettent Press+Release traitent chaque touche deux fois.
-- **Routing clavier par priorité** : modale de confirmation > Ctrl+1..7 >
-  écran actif > commandes globales (q/r/l/Esc). Les écrans à champ texte
+- **Routing clavier par priorité** : modale de confirmation > Ctrl+1..7 /
+  F1..F7 > écran actif > commandes globales (q/r/l/Esc). Les écrans à champ texte
   (Saisie, Git) et les éditeurs (posting, cellule budgétaire) consomment
   **toutes** les touches — les lettres r/l/e/x y sont du texte.
 - **Colonnes de `Table`** : le `column_spacing` est soustrait **avant** la

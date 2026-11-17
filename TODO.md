@@ -159,6 +159,15 @@ REVERSED intégral, mais rien ne disait le mois ; le titre seul mentionnait
   contient désormais le mois et le compte — chercher des occurrences par
   propriété (une occurrence bleue), pas la première.*
 
+**Touches fonction F1..F7 (2026-11-17)** — demande d'usage : changer
+d'onglet avec F1..F7 en plus de Ctrl+1..7. Livré :
+
+- [x] `KeyCode::F(n)` routé au même niveau que Ctrl+1..7 (avant la
+  délégation d'écran : marche même depuis un formulaire ; la modale de
+  confirmation reste prioritaire). F8+ ignorés, jamais de décalage.
+- [x] Barre d'aide : « Ctrl+1..7 ou F1..F7 : écrans · … ».
+- [x] 2 tests unitaires (F1..F7 → les 7 écrans ; F8/F9/F12 sans effet).
+
 **Prochaine action : usage réel** (saisie quotidienne, budgets 2027 via
 l'éditeur) — le backlog de la revue TUI est **terminé** (#1 à #9), #10
 (AGENTS.md) livré le 2026-11-17 : la doc décrit désormais la TUI

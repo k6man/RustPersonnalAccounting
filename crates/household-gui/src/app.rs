@@ -317,14 +317,22 @@ impl App {
             return false;
         }
 
-        // Ctrl+1..7 : changement d'écran direct, prioritaire sur tout
-        // (marche aussi depuis un formulaire).
+        // Ctrl+1..7 et F1..F7 : changement d'écran direct, prioritaire sur
+        // tout (marche aussi depuis un formulaire).
         if key.modifiers.contains(KeyModifiers::CONTROL)
             && let KeyCode::Char(c) = key.code
             && let Some(digit) = c.to_digit(10)
             && digit >= 1
         {
             let index = (digit - 1) as usize;
+            if index < Onglet::TOUS.len() {
+                self.changer_ecran(index);
+            }
+            return false;
+        }
+        if let KeyCode::F(n) = key.code {
+            // F1..F7 → écrans 1..7 (F8+ ignoré, jamais de décalage).
+            let index = usize::from(n).saturating_sub(1);
             if index < Onglet::TOUS.len() {
                 self.changer_ecran(index);
             }
@@ -976,7 +984,7 @@ impl App {
             // Barre d'aide permanente : la découvrabilité des commandes
             // globales ne coûte qu'une ligne.
             let aide = Paragraph::new(
-                " Ctrl+1..7 : écrans · Esc : retour au tableau de bord · q : quitter",
+                " Ctrl+1..7 ou F1..F7 : écrans · Esc : retour au tableau de bord · q : quitter",
             )
             .style(Style::default().fg(Color::DarkGray));
             f.render_widget(aide, area);
@@ -1123,5 +1131,47 @@ mod tests {
             app.on_key(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL)),
             "Ctrl+C quitte"
         );
+    }
+
+    #[test]
+    fn touches_fonction_changent_d_ecran() {
+        // F1..F7 = Ctrl+1..7 : F1 → Tableau de bord … F7 → Git.
+        let attendus = [
+            Onglet::TableauDeBord,
+            Onglet::Journal,
+            Onglet::Saisie,
+            Onglet::Budget,
+            Onglet::Rapports,
+            Onglet::Graphiques,
+            Onglet::Git,
+        ];
+        for (n, attendu) in attendus.iter().enumerate() {
+            let mut app = app_test();
+            app.ecran_actif = 0;
+            let quitte = app.on_key(touche(KeyCode::F(n as u8 + 1)));
+            assert!(!quitte);
+            assert_eq!(
+                app.ecran_actif,
+                attendu.index(),
+                "F{} doit ouvrir l'écran {}",
+                n + 1,
+                attendu.index() + 1
+            );
+        }
+    }
+
+    #[test]
+    fn f8_et_au_dela_ne_font_rien() {
+        let mut app = app_test();
+        app.ecran_actif = Onglet::Budget.index();
+        for n in [8u8, 9, 12] {
+            let quitte = app.on_key(touche(KeyCode::F(n)));
+            assert!(!quitte);
+            assert_eq!(
+                app.ecran_actif,
+                Onglet::Budget.index(),
+                "F{n} ne doit pas changer d'écran"
+            );
+        }
     }
 }
