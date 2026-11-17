@@ -970,12 +970,19 @@ fn dashboard_total_et_solde_previsionnel_affiches() {
     // Ligne TOTAL du mois + bande « solde prévisionnel » : solde CC −
     // reste à dépenser, avec la formule affichée pour être vérifiable.
     let donnees = donnees_test();
+    let mut etat = dashboard::UiState::default();
     let area = Rect::new(0, 0, 100, 40);
     let backend = TestBackend::new(area.width, area.height);
     let mut terminal = ratatui::Terminal::new(backend).unwrap();
     terminal
         .draw(|frame| {
-            dashboard::afficher(frame, area, &donnees.tableau_de_bord, &mut Vec::new());
+            dashboard::afficher(
+                frame,
+                area,
+                &donnees.tableau_de_bord,
+                &mut etat,
+                &mut Vec::new(),
+            );
         })
         .unwrap();
     let contenu = terminal.backend().buffer().content().to_vec();
@@ -1005,13 +1012,20 @@ fn dashboard_solde_previsionnel_negatif_en_rouge() {
     let mut donnees = (*donnees_test()).clone();
     donnees.tableau_de_bord.solde_cc = Some(Decimal::new(10000, 2)); // 100,00
     donnees.tableau_de_bord.reste_a_depenser = Decimal::new(50000, 2); // 500,00
+    let mut etat = dashboard::UiState::default();
 
     let area = Rect::new(0, 0, 100, 40);
     let backend = TestBackend::new(area.width, area.height);
     let mut terminal = ratatui::Terminal::new(backend).unwrap();
     terminal
         .draw(|frame| {
-            dashboard::afficher(frame, area, &donnees.tableau_de_bord, &mut Vec::new());
+            dashboard::afficher(
+                frame,
+                area,
+                &donnees.tableau_de_bord,
+                &mut etat,
+                &mut Vec::new(),
+            );
         })
         .unwrap();
     let contenu = terminal.backend().buffer().content().to_vec();
@@ -1025,6 +1039,95 @@ fn dashboard_solde_previsionnel_negatif_en_rouge() {
             .iter()
             .any(|c| c.symbol() != " " && c.fg == ratatui::style::Color::Red),
         "la bande prévisionnelle négative est en rouge"
+    );
+}
+
+#[test]
+fn dashboard_defilement_borne_et_indicateur_de_titre() {
+    // Le tableau « Budget vs réel » défile : fenêtre de lignes, indicateur
+    // dans le titre, ligne TOTAL toujours visible, bornes respectées.
+    let mut donnees = (*donnees_test()).clone();
+    donnees.tableau_de_bord.budget_mois = (0..12)
+        .map(|i| BudgetVsReel {
+            compte: format!("Expenses:Poste{i:02}"),
+            budgete: Decimal::new(10000 + i as i64, 2),
+            reel: Decimal::new(1000, 2),
+        })
+        .collect();
+
+    // 28 lignes : chunks[3] = 7, bande 1 → table 6 → 3 lignes de données
+    // visibles (+ TOTAL).
+    let area = Rect::new(0, 0, 100, 28);
+    let mut etat = dashboard::UiState::default();
+
+    let rendu = |donnees: &UiData, etat: &mut dashboard::UiState| {
+        let backend = TestBackend::new(area.width, area.height);
+        let mut terminal = ratatui::Terminal::new(backend).unwrap();
+        terminal
+            .draw(|frame| {
+                dashboard::afficher(frame, area, &donnees.tableau_de_bord, etat, &mut Vec::new());
+            })
+            .unwrap();
+        terminal
+            .backend()
+            .buffer()
+            .content()
+            .iter()
+            .map(|c| c.symbol().to_string())
+            .collect::<Vec<_>>()
+            .join("")
+    };
+
+    // Défaut : la première ligne est visible, l'indicateur de titre aussi.
+    let texte = rendu(&donnees, &mut etat);
+    let visibles = etat.visibles.max(1);
+    assert!(
+        texte.contains("Poste00"),
+        "première ligne visible au départ"
+    );
+    assert!(
+        texte.contains("lignes 1/12"),
+        "indicateur de défilement — {texte:?}"
+    );
+    assert!(
+        texte.contains("TOTAL"),
+        "le total reste visible en défilement"
+    );
+
+    // PageDown jusqu'à la borne basse (et au-delà : bornée).
+    let borne = 12 - visibles;
+    for _ in 0..15 {
+        assert!(dashboard::on_key(
+            key(KeyCode::PageDown, KeyModifiers::NONE),
+            &mut etat,
+            12
+        ));
+    }
+    assert_eq!(
+        etat.defilement, borne,
+        "borne basse : 12 − {visibles} visibles"
+    );
+    let texte = rendu(&donnees, &mut etat);
+    assert!(texte.contains("Poste11"), "dernière ligne visible en bas");
+    assert!(
+        !texte.contains("Poste00"),
+        "la première ligne est scrollée hors écran"
+    );
+
+    // Monter au-dessus de la borne haute est sans effet.
+    for _ in 0..15 {
+        assert!(dashboard::on_key(
+            key(KeyCode::Up, KeyModifiers::NONE),
+            &mut etat,
+            12
+        ));
+    }
+    assert_eq!(etat.defilement, 0, "borne haute : 0");
+
+    // Les commandes globales ne sont pas consommées par le défilement.
+    assert!(
+        !dashboard::on_key(key(KeyCode::Char('q'), KeyModifiers::NONE), &mut etat, 12),
+        "q reste une commande globale"
     );
 }
 

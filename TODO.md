@@ -193,6 +193,26 @@ dashboard montrait poste par poste, sans total ni solde). Livré sur le
   milliers — les chaînes attendues dans le buffer doivent l'inclure
   (`\u{202f}`).
 
+**Défilement du tableau « Budget vs réel » (2026-11-17)** — demande
+d'usage : le tableau du Tableau de bord n'affichait que les 8 premiers
+postes (`.take(8)`), sans défilement. Livré :
+
+- [x] **Toutes les lignes** disponibles (fini `.take(8)`), fenêtre
+  glissante : `dashboard::UiState { defilement, visibles }` — la hauteur
+  visible est mesurée au rendu et réutilisée par `on_key` entre deux
+  dessins (pattern : le rendu est la seule source de vérité du layout).
+- [x] Clavier : ↑/↓ (±1), Page↑/Page↓ (± fenêtre) — routés **avant** les
+  commandes globales mais sans les consommer (q/r/l/Esc passent encore).
+- [x] Molette : ScrollUp/ScrollDown sur le Tableau de bord font défiler
+  (le Journal garde sa sélection ; les autres écrans ignorent).
+- [x] Ligne **TOTAL toujours visible** en bas du tableau, même en
+  défilement ; bande « Solde prévisionnel » inchangée en dessous.
+- [x] Indicateur dans le titre quand des lignes sont cachées :
+  « Budget vs réel — 2026-11 · lignes 4/12 ».
+- [x] Borne basse = nb − visibles, borne haute = 0 (vérifié par test
+  dynamique sur `etat.visibles` — l'arithmétique en dur du premier jet
+  était fausse : visibles dépend du terminal, pas de nombres constants).
+
 **Prochaine action : usage réel** (saisie quotidienne, budgets 2027 via
 l'éditeur).
 

@@ -106,6 +106,7 @@ pub struct App {
     ecran_actif: usize,
     params_ledger: bool,
     saisie_en_vol: bool,
+    tableau_de_bord: crate::views::dashboard::UiState,
     journal: crate::views::journal::UiState,
     saisie: crate::views::saisie::UiState,
     budget: crate::views::budget::UiState,
@@ -169,6 +170,7 @@ impl App {
             ecran_actif,
             params_ledger,
             saisie_en_vol: false,
+            tableau_de_bord: crate::views::dashboard::UiState::default(),
             journal: crate::views::journal::UiState::new(),
             saisie: crate::views::saisie::UiState::default(),
             budget: crate::views::budget::UiState::nouveau(crate::worker::aujourd_hui().year()),
@@ -342,6 +344,17 @@ impl App {
         // Délégation par écran actif. Les écrans avec champ texte (Saisie,
         // Git) consomment TOUTES les touches : les lettres q/r/l y sont du
         // texte, pas des commandes globales.
+        if self.ecran_actif == Onglet::TableauDeBord.index() {
+            // ↑/↓ et Page↑/Page↓ font défiler le tableau « Budget vs
+            // réel » ; les autres touches restent globales (q, r, l, Esc).
+            let nb = self
+                .donnees
+                .as_ref()
+                .map_or(0, |d| d.tableau_de_bord.budget_mois.len());
+            if dashboard::on_key(key, &mut self.tableau_de_bord, nb) {
+                return false;
+            }
+        }
         if self.ecran_actif == Onglet::Saisie.index() {
             let action = self.saisie.on_key(
                 key,
@@ -518,23 +531,38 @@ impl App {
             return;
         }
 
-        // Molette : sur le Journal, elle déplace la sélection (comme les
-        // flèches). Les autres écrans n'ont pas de défilement pour l'instant.
+        // Molette : Journal (déplace la sélection, comme les flèches) et
+        // Tableau de bord (fait défiler le tableau « Budget vs réel »).
+        // Les autres écrans n'ont pas de défilement pour l'instant.
         if matches!(
             mouse.kind,
             MouseEventKind::ScrollUp | MouseEventKind::ScrollDown
-        ) && self.ecran_actif == Onglet::Journal.index()
-        {
-            let nb = self
-                .donnees
-                .as_ref()
-                .map_or(0, |d| d.journal.lignes.len().min(journal::MAX_LIGNES));
-            if mouse.kind == MouseEventKind::ScrollUp {
-                self.journal.monter(nb);
+        ) {
+            let delta = if mouse.kind == MouseEventKind::ScrollUp {
+                -1
             } else {
-                self.journal.descendre(nb);
+                1
+            };
+            if self.ecran_actif == Onglet::Journal.index() {
+                let nb = self
+                    .donnees
+                    .as_ref()
+                    .map_or(0, |d| d.journal.lignes.len().min(journal::MAX_LIGNES));
+                if delta < 0 {
+                    self.journal.monter(nb);
+                } else {
+                    self.journal.descendre(nb);
+                }
+                return;
             }
-            return;
+            if self.ecran_actif == Onglet::TableauDeBord.index() {
+                let nb = self
+                    .donnees
+                    .as_ref()
+                    .map_or(0, |d| d.tableau_de_bord.budget_mois.len());
+                self.tableau_de_bord.defiler(nb, delta);
+                return;
+            }
         }
 
         if let MouseEventKind::Down(MouseButton::Left) = mouse.kind {
@@ -874,6 +902,7 @@ impl App {
                     f,
                     area,
                     &donnees.tableau_de_bord,
+                    &mut self.tableau_de_bord,
                     &mut self.zones_cliquables,
                 );
             }
