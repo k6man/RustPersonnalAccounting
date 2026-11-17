@@ -13,7 +13,7 @@ use ratatui::{
 };
 
 use crate::app::ActionClique;
-use crate::fmt::eur;
+use crate::fmt::{eur, nombre};
 use crate::widgets::text_input::TextInput;
 use household_budget::BudgetGrid;
 use rust_decimal::Decimal;
@@ -224,19 +224,30 @@ pub fn afficher(
                         .add_modifier(Modifier::BOLD);
                     cells.push(Cell::from(e.input.ligne_avec_curseur()).style(style_cellule));
                 } else {
-                    cells.push(Cell::from(format!("{:>10}", eur(cell.budgeted))));
+                    cells.push(Cell::from(format!("{:>6}", nombre(cell.budgeted))));
                 }
             }
             let ecart = total_budget - total_reel;
             cells.push(Cell::from(format!("{:>10}", eur(total_budget))));
-            cells.push(Cell::from(format!("{:>10}", eur(ecart))));
+            let style_ecart = if ecart < Decimal::ZERO {
+                // Dépassement : le réel a mangé le budget.
+                Style::default().fg(Color::Red)
+            } else {
+                Style::default()
+            };
+            cells.push(Cell::from(format!("{:>10}", eur(ecart))).style(style_ecart));
             Row::new(cells).style(style)
         })
         .collect();
 
-    let widths: Vec<Constraint> = std::iter::once(Constraint::Length(28))
-        .chain(std::iter::repeat_n(Constraint::Length(10), 12))
-        .chain([Constraint::Length(10), Constraint::Length(10)])
+    // Largeurs proportionnelles : la grille tiendait ≈183 colonnes en
+    // largeurs fixes — Total/Écart étaient hors écran dès 120 colonnes.
+    // Les cellules mensuelles sont compactes (nombre sans €) : sur un
+    // terminal étroit, le clip droit perd d'abord les décimales — dégradation
+    // lisible (« 1 234 » reste affiché).
+    let widths: Vec<Constraint> = std::iter::once(Constraint::Percentage(20))
+        .chain(std::iter::repeat_n(Constraint::Percentage(5), 12))
+        .chain([Constraint::Percentage(10), Constraint::Percentage(10)])
         .collect();
 
     let titre = if let Some(e) = edition {

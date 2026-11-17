@@ -804,6 +804,67 @@ fn budget_navigue_lignes_et_mois() {
 }
 
 #[test]
+fn budget_rendu_terminal_etroit_ne_panique_pas() {
+    // Régression : largeurs fixes ≈183 colonnes — vérifie que la grille
+    // proportionnelle tient (et se dégrade proprement) sur 80 colonnes,
+    // avec une vraie ligne budgétaire rendue.
+    let grille = grille_essai();
+    let mut etat = budget::UiState::nouveau(2026);
+    let etroit = Rect::new(0, 0, 80, 24);
+
+    render_safe(etroit, |frame| {
+        budget::afficher(
+            frame,
+            etroit,
+            Some(&grille),
+            &mut etat,
+            &|_| false,
+            &mut Vec::new(),
+        );
+    });
+}
+
+#[test]
+fn budget_rendu_large_toutes_colonnes_visibles() {
+    // Régression : largeurs fixes ≈183 colonnes, Total/Écart hors écran —
+    // sur 80 colonnes, les en-têtes des DERNIÈRES colonnes doivent être
+    // rendus dans le buffer (grille proportionnelle).
+    let grille = grille_essai();
+    let mut etat = budget::UiState::nouveau(2026);
+    let etroit = Rect::new(0, 0, 80, 24);
+    let backend = TestBackend::new(etroit.width, etroit.height);
+    let mut terminal = ratatui::Terminal::new(backend).unwrap();
+    terminal
+        .draw(|frame| {
+            budget::afficher(
+                frame,
+                etroit,
+                Some(&grille),
+                &mut etat,
+                &|_| false,
+                &mut Vec::new(),
+            );
+        })
+        .unwrap();
+
+    let texte: String = terminal
+        .backend()
+        .buffer()
+        .content()
+        .iter()
+        .map(|cellule| cellule.symbol())
+        .collect();
+    assert!(
+        texte.contains("Écart"),
+        "la colonne Écart est rendue sur 80 colonnes — buffer : {texte:?}"
+    );
+    assert!(
+        texte.contains("Déc"),
+        "la colonne Décembre est rendue sur 80 colonnes"
+    );
+}
+
+#[test]
 fn budget_action_edition_cellule_retourne_none_si_grille_vide() {
     let donnees = donnees_test();
     let mut etat = budget::UiState::nouveau(2026);

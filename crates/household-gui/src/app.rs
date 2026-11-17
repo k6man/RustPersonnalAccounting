@@ -3,7 +3,7 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::mpsc::{Receiver, Sender};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crossterm::event::{
     self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseButton, MouseEvent,
@@ -22,6 +22,10 @@ use household_core::ResolutionLedger;
 use crate::viewmodel::UiData;
 use crate::views::{budget, dashboard, git, graphiques, journal, rapports, saisie};
 use crate::worker::{Command, LoadOutcome};
+
+/// Durée d'affichage d'un flash de succès ; les erreurs restent affichées
+/// (l'utilisateur doit les lire) tant qu'un autre message ne les remplace.
+const FLASH_SUCCES: Duration = Duration::from_secs(4);
 
 /// Les écrans de l'application.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -93,6 +97,8 @@ pub struct App {
     echec: Option<String>,
     en_chargement: bool,
     flash: Option<(String, bool)>,
+    /// Instant du dernier flash (pour l'expiration des succès).
+    flash_depuis: Option<Instant>,
     /// Position d'affichage (0-based dans les lignes affichées du journal)
     /// de la transaction dont la suppression attend une confirmation modale.
     confirmation_suppression: Option<usize>,
@@ -158,6 +164,7 @@ impl App {
             echec: None,
             en_chargement: true,
             flash: None,
+            flash_depuis: None,
             confirmation_suppression: None,
             ecran_actif,
             params_ledger,
@@ -181,6 +188,7 @@ impl App {
 
     pub fn run<B: Backend>(&mut self, terminal: &mut Terminal<B>) -> Result<(), String> {
         loop {
+            self.expire_flash();
             terminal.draw(|f| self.ui(f)).map_err(|e| e.to_string())?;
 
             while let Ok(outcome) = self.outcome_rx.try_recv() {
@@ -219,7 +227,7 @@ impl App {
             LoadOutcome::Ecrit { donnees, message } => {
                 self.donnees = Some(donnees);
                 self.echec = None;
-                self.flash = Some((message, false));
+                self.notifier(message, false);
                 self.ecran_actif = Onglet::Journal.index();
                 if self.saisie_en_vol {
                     self.saisie =
@@ -231,10 +239,10 @@ impl App {
                 // Écriture budgétaire : on reste sur l'écran Budget.
                 self.donnees = Some(donnees);
                 self.echec = None;
-                self.flash = Some((message, false));
+                self.notifier(message, false);
             }
             LoadOutcome::Refuse(refus) => {
-                self.flash = Some((refus, true));
+                self.notifier(refus, true);
                 self.saisie_en_vol = false;
             }
             LoadOutcome::Git { donnees, message } => {
@@ -243,11 +251,34 @@ impl App {
                 // Pré-remplir le message de commit avec la suggestion.
                 self.git.set_message_suggere(&donnees.message_suggere);
                 if let Some((texte, est_erreur)) = message {
-                    self.flash = Some((texte, est_erreur));
+                    self.notifier(texte, est_erreur);
                 }
             }
         }
         self.en_chargement = false;
+    }
+
+    /// Affiche un message flash : 4 s pour un succès (voir
+    /// [`FLASH_SUCCES`]), persistant pour une erreur.
+    fn notifier(&mut self, message: impl Into<String>, est_erreur: bool) {
+        self.flash = Some((message.into(), est_erreur));
+        self.flash_depuis = Some(Instant::now());
+    }
+
+    /// Efface un flash de succès expiré ; les erreurs ne s'effacent pas
+    /// d'elles-mêmes.
+    fn expire_flash(&mut self) {
+        let doit_exprier = self
+            .flash_depuis
+            .is_some_and(|depuis| depuis.elapsed() >= FLASH_SUCCES)
+            && self
+                .flash
+                .as_ref()
+                .is_some_and(|(_, est_erreur)| !*est_erreur);
+        if doit_exprier {
+            self.flash = None;
+            self.flash_depuis = None;
+        }
     }
 
     /// Change d'écran, avec le cas particulier Git (recharge le statut).
@@ -450,7 +481,15 @@ impl App {
 
         // Commandes globales (hors écrans à champ texte).
         match key.code {
-            KeyCode::Char('q') | KeyCode::Esc => return true,
+            KeyCode::Char('q') => return true,
+            KeyCode::Esc => {
+                // Esc = retour au tableau de bord, JAMAIS quitter (l'écran
+                // Saisie et l'éditeur de cellule Budget interceptent Esc
+                // avant pour annuler). Ctrl+C et q restent les issues.
+                if self.ecran_actif != Onglet::TableauDeBord.index() {
+                    self.changer_ecran(Onglet::TableauDeBord.index());
+                }
+            }
             KeyCode::Char('r') => self.demander_rechargement(),
             KeyCode::Char('l') => self.params_ledger = !self.params_ledger,
             _ => {}
@@ -614,7 +653,7 @@ impl App {
             crate::views::budget::ActionBudget::BasculerRollover(famille) => {
                 match self.config.basculer_rollover(&famille) {
                     Ok(()) => {
-                        self.flash = Some((
+                        self.notifier(
                             format!(
                                 "rollover {} — préférence enregistrée",
                                 if self.config.rollover_actif(&famille) {
@@ -624,9 +663,9 @@ impl App {
                                 }
                             ),
                             false,
-                        ));
+                        );
                     }
-                    Err(e) => self.flash = Some((e, true)),
+                    Err(e) => self.notifier(e, true),
                 }
             }
             crate::views::budget::ActionBudget::Aucun => {}
@@ -933,6 +972,14 @@ impl App {
             let paragraphe = Paragraph::new(format!(" Erreur : {echec} "))
                 .style(Style::default().bg(Color::Red));
             f.render_widget(paragraphe, area);
+        } else {
+            // Barre d'aide permanente : la découvrabilité des commandes
+            // globales ne coûte qu'une ligne.
+            let aide = Paragraph::new(
+                " Ctrl+1..7 : écrans · Esc : retour au tableau de bord · q : quitter",
+            )
+            .style(Style::default().fg(Color::DarkGray));
+            f.render_widget(aide, area);
         }
     }
 }
@@ -991,4 +1038,90 @@ pub fn zones_onglets(titres: &[String], area: Rect) -> Vec<(Rect, usize)> {
         x += largeur + 1; // + la barre verticale de séparation
     }
     zones
+}
+
+/// Tests unitaires du routage clavier et du flash (accès privé aux champs).
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// App de test : chemin de ledger inexistant — le worker répond
+    /// `Echec` tout de suite et le watcher reste désactivé (dossier
+    /// absent). Suffisant pour tester le clavier et le flash sans ledger
+    /// réel, ni toucher à l'exemple du dépôt.
+    fn app_test() -> App {
+        App::new(
+            ResolutionLedger {
+                chemin: std::env::temp_dir()
+                    .join("inexistant-compta-test")
+                    .join("main.beancount"),
+                mode: household_core::ModeLedger::Reel,
+                source: household_core::SourceResolution::Argument,
+                avertissement: None,
+            },
+            None,
+            false,
+        )
+    }
+
+    fn touche(code: KeyCode) -> KeyEvent {
+        KeyEvent::new(code, KeyModifiers::NONE)
+    }
+
+    #[test]
+    fn flash_succes_expire_apres_4_s() {
+        let mut app = app_test();
+        app.notifier("écrit ✓", false);
+        app.expire_flash();
+        assert!(app.flash.is_some(), "un succès frais ne s'efface pas");
+
+        // Simule le passage des 4 s (pas d'attente réelle dans le test).
+        app.flash_depuis = Some(Instant::now() - FLASH_SUCCES);
+        app.expire_flash();
+        assert!(app.flash.is_none(), "le succès expire après FLASH_SUCCES");
+    }
+
+    #[test]
+    fn flash_erreur_ne_s_expire_pas() {
+        let mut app = app_test();
+        app.notifier("écriture refusée", true);
+        app.flash_depuis = Some(Instant::now() - FLASH_SUCCES);
+        app.expire_flash();
+        assert!(
+            app.flash.is_some(),
+            "une erreur reste affichée jusqu'à remplacement"
+        );
+    }
+
+    #[test]
+    fn esc_retourne_au_tableau_de_bord_sans_quitter() {
+        let mut app = app_test();
+        app.ecran_actif = Onglet::Journal.index();
+
+        let quitte = app.on_key(touche(KeyCode::Esc));
+        assert!(!quitte, "Esc ne quitte jamais l'application");
+        assert_eq!(
+            app.ecran_actif,
+            Onglet::TableauDeBord.index(),
+            "Esc ramène au tableau de bord"
+        );
+    }
+
+    #[test]
+    fn esc_sur_tableau_de_bord_ne_change_rien() {
+        let mut app = app_test();
+        let quitte = app.on_key(touche(KeyCode::Esc));
+        assert!(!quitte);
+        assert_eq!(app.ecran_actif, Onglet::TableauDeBord.index());
+    }
+
+    #[test]
+    fn q_quitte_et_ctrl_c_aussi() {
+        let mut app = app_test();
+        assert!(app.on_key(touche(KeyCode::Char('q'))), "q quitte");
+        assert!(
+            app.on_key(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL)),
+            "Ctrl+C quitte"
+        );
+    }
 }

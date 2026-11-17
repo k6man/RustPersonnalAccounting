@@ -112,9 +112,33 @@ maintenant un vrai formulaire :
   partagées avec les flèches clavier. 1 test.
 - [x] **#1/#2/#3 livrés le jour même** (voir ci-dessus).
 
-**Prochaine action : suite du backlog de la revue TUI** — #7 (largeurs
-Budget adaptatives), #8 (flash expirable), #9 (Esc cohérent), #10
-(AGENTS.md à mettre à jour : le produit est une TUI ratatui).
+**Backlog revue TUI — #7/#8/#9 livrés (2026-11-17)** :
+
+- [x] **#7 — Largeurs Budget adaptatives** : grille en
+  `Constraint::Percentage` (compte 20 %, 12 mois à 5 %, Total 10 %, Écart
+  10 %) au lieu de ≈183 colonnes figées ; cellules mensuelles compactes
+  `{:>6}` via `fmt::nombre` (pas de « € » qui double la largeur) — sur un
+  terminal étroit le clip droit perd d'abord les décimales, « 1 234 »
+  reste lisible ; écart négatif en rouge. 2 tests de rendu (80 colonnes :
+  « Écart » et « Déc » présents dans le buffer ; ne panique pas).
+  *Note de débogage : le premier échec du test venait du fixture
+  (`donnees_test` → grille vide, « Aucune ligne ») — le tableau n'était
+  jamais rendu ; bascule des deux tests sur `grille_essai()`.*
+- [x] **#8 — Flash expirable** : `FLASH_SUCCES = 4 s` — un succès
+  s'efface (`expire_flash()` en tête de boucle, horodaté par
+  `notifier()`), une erreur reste jusqu'à remplacement ; tous les sites
+  `flash = Some` convertis ; barre d'aide permanente dans la bannière
+  (Ctrl+1..7 · Esc · q). 2 tests unitaires (module `#[cfg(test)]` dans
+  `app.rs`).
+- [x] **#9 — Esc = retour** (choix tranché) : Esc ramène au Tableau de
+  bord, **jamais** quitter ; Saisie et l'éditeur de cellule Budget
+  interceptent Esc avant pour annuler ; `q` et Ctrl+C restent les issues.
+  3 tests unitaires (Esc retour, Esc neutre sur le Tableau de bord,
+  q/Ctrl+C quittent).
+
+**Prochaine action : #10 — AGENTS.md** à mettre à jour : il décrit
+l'ancienne app egui (fenêtres flottantes, `fenetres_ouvertes`, pièges
+egui 0.37…) alors que le produit est une TUI ratatui plein écran.
 
 **Décisions tranchées avec la maîtresse d'ouvrage** : une seule fenêtre « Graphiques »
 avec des mini-onglets internes (pas une fenêtre par graphe) ; trois graphes
@@ -386,12 +410,13 @@ Reste, par priorité :
 - [x] **#6 — Molette du Journal** (2026-11-16) : `ScrollUp`/`ScrollDown`
   déplacent la sélection via `monter`/`descendre`, partagées avec les
   flèches ; bornée à MAX_LIGNES.
-- [ ] **#7 — Largeurs Budget adaptatives** : ≈161 colonnes figées →
-  Total/Écart hors écran ≤ 120 colonnes.
-- [ ] **#8 — Flash avec expiration** : un message de succès reste affiché
-  indéfiniment.
-- [ ] **#9 — Esc cohérent** : quitte l'app sur 5 écrans sur 7, « annule »
-  sur la Saisie — un Esc global « retour/annuler » serait plus sain.
+- [x] **#7 — Largeurs Budget adaptatives** (2026-11-17, voir « En
+  cours ») : grille proportionnelle, cellules compactes, dégradation
+  gracieuse, écart négatif en rouge.
+- [x] **#8 — Flash avec expiration** (2026-11-17) : succès 4 s, erreurs
+  persistantes, barre d'aide permanente.
+- [x] **#9 — Esc = retour** (2026-11-17, choix tranché) : Esc ramène au
+  Tableau de bord et ne quitte jamais ; q et Ctrl+C restent les issues.
 - [ ] **#10 — AGENTS.md** : décrit une app egui (fenêtres flottantes,
   `fenetres_ouvertes`, pièges egui 0.37) alors que le produit est une TUI
   ratatui — mettre à jour la section Architecture.
