@@ -457,6 +457,125 @@ fn saisie_navigue_cycle_complet_avec_shift_tab() {
 }
 
 #[test]
+fn saisie_navigue_champs_avec_fleches_haut_bas() {
+    let donnees = donnees_test();
+    let mut etat = saisie::UiState::nouveau("2026-03-15".parse().unwrap());
+    assert_eq!(etat.champ_actif, saisie::Champ::Date);
+
+    // Flèche bas avance : Date → Flag → Tiers → Libellé → Tags → Liens → Postings
+    for expected in [
+        saisie::Champ::Flag,
+        saisie::Champ::Tiers,
+        saisie::Champ::Libelle,
+        saisie::Champ::Tags,
+        saisie::Champ::Liens,
+        saisie::Champ::Postings,
+    ] {
+        let action = etat.on_key(
+            key(KeyCode::Down, KeyModifiers::NONE),
+            &donnees.comptes,
+            &donnees.payees,
+        );
+        assert!(action.is_none());
+        assert_eq!(etat.champ_actif, expected);
+    }
+
+    // Flèche bas depuis Postings ne cycle PAS vers Date (Haut/Bas
+    // naviguent les postings quand on est dans le champ Postings).
+    // Pour passer au champ suivant, utiliser Tab.
+    let action = etat.on_key(
+        key(KeyCode::Down, KeyModifiers::NONE),
+        &donnees.comptes,
+        &donnees.payees,
+    );
+    assert!(action.is_none());
+    assert_eq!(
+        etat.champ_actif,
+        saisie::Champ::Postings,
+        "Haut/Bas naviguent les postings dans le champ Postings"
+    );
+
+    // Tab depuis Postings cycle vers Date.
+    let action = etat.on_key(
+        key(KeyCode::Tab, KeyModifiers::NONE),
+        &donnees.comptes,
+        &donnees.payees,
+    );
+    assert!(action.is_none());
+    assert_eq!(etat.champ_actif, saisie::Champ::Date);
+
+    // Remonte le cycle avec flèche haut (s'arrête à Postings, car
+    // dans ce champ Haut/Bas naviguent les postings).
+    let action = etat.on_key(
+        key(KeyCode::Up, KeyModifiers::NONE),
+        &donnees.comptes,
+        &donnees.payees,
+    );
+    assert!(action.is_none());
+    assert_eq!(
+        etat.champ_actif,
+        saisie::Champ::Postings,
+        "Haut depuis Date → Postings"
+    );
+    // Maintenant dans Postings : Up navigue les postings (pas de champ
+    // précédent). Pour continuer le cycle inverse, utiliser Maj+Tab.
+}
+
+#[test]
+fn saisie_fleches_haut_bas_naviguent_postings_dans_champ_postings() {
+    // Quand on est dans le champ Postings, Haut/Bas naviguent les lignes
+    // de postings, pas les champs du formulaire.
+    let donnees = donnees_test();
+    let mut etat = saisie::UiState::nouveau("2026-03-15".parse().unwrap());
+    // Ajoute 3 lignes de postings via le raccourci '+'.
+    for _ in 0..3 {
+        etat.on_key(
+            key(KeyCode::Char('+'), KeyModifiers::NONE),
+            &donnees.comptes,
+            &donnees.payees,
+        );
+    }
+    etat.posting_selectionne = 0;
+    etat.champ_actif = saisie::Champ::Postings;
+
+    // Flèche bas sélectionne la ligne suivante.
+    let action = etat.on_key(
+        key(KeyCode::Down, KeyModifiers::NONE),
+        &donnees.comptes,
+        &donnees.payees,
+    );
+    assert!(action.is_none());
+    assert_eq!(etat.posting_selectionne, 1);
+
+    let action = etat.on_key(
+        key(KeyCode::Down, KeyModifiers::NONE),
+        &donnees.comptes,
+        &donnees.payees,
+    );
+    assert!(action.is_none());
+    assert_eq!(etat.posting_selectionne, 2);
+
+    // Flèche haut remonte.
+    let action = etat.on_key(
+        key(KeyCode::Up, KeyModifiers::NONE),
+        &donnees.comptes,
+        &donnees.payees,
+    );
+    assert!(action.is_none());
+    assert_eq!(etat.posting_selectionne, 1);
+
+    // Ne dépasse pas les bornes.
+    etat.posting_selectionne = 0;
+    let action = etat.on_key(
+        key(KeyCode::Up, KeyModifiers::NONE),
+        &donnees.comptes,
+        &donnees.payees,
+    );
+    assert!(action.is_none());
+    assert_eq!(etat.posting_selectionne, 0);
+}
+
+#[test]
 fn saisie_edite_champ_libelle() {
     let donnees = donnees_test();
     let mut etat = saisie::UiState::nouveau("2026-03-15".parse().unwrap());

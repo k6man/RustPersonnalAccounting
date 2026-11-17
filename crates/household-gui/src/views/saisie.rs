@@ -331,6 +331,36 @@ impl UiState {
                 }
                 None
             }
+            KeyCode::Up => {
+                // Navigation entre champs (hors Postings : là, Up/Down
+                // naviguent les lignes de postings).
+                if self.champ_actif != Champ::Postings {
+                    self.champ_actif = self.champ_actif.precedent();
+                    if let Some(input) = self.input_actif() {
+                        input.cursor = input.value.len();
+                    }
+                    None
+                } else {
+                    self.posting_selectionne = self.posting_selectionne.saturating_sub(1);
+                    None
+                }
+            }
+            KeyCode::Down => {
+                // Navigation entre champs (hors Postings).
+                if self.champ_actif != Champ::Postings {
+                    self.champ_actif = self.champ_actif.suivant();
+                    if let Some(input) = self.input_actif() {
+                        input.cursor = input.value.len();
+                    }
+                    None
+                } else {
+                    if !self.brouillon.lignes.is_empty() {
+                        self.posting_selectionne =
+                            (self.posting_selectionne + 1).min(self.brouillon.lignes.len() - 1);
+                    }
+                    None
+                }
+            }
             KeyCode::Enter => {
                 // Sur le champ postings, Entrée valide le brouillon.
                 // Sur les autres champs, passe au suivant.
@@ -338,17 +368,6 @@ impl UiState {
                     return Some(Action::Enregistrer);
                 }
                 self.champ_actif = self.champ_actif.suivant();
-                None
-            }
-            KeyCode::Up if self.champ_actif == Champ::Postings => {
-                self.posting_selectionne = self.posting_selectionne.saturating_sub(1);
-                None
-            }
-            KeyCode::Down if self.champ_actif == Champ::Postings => {
-                if !self.brouillon.lignes.is_empty() {
-                    self.posting_selectionne =
-                        (self.posting_selectionne + 1).min(self.brouillon.lignes.len() - 1);
-                }
                 None
             }
             KeyCode::Char('f') => {

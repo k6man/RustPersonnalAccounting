@@ -309,6 +309,24 @@ utilisateur : impossible de revenir sur les champs précédents. Livré :
 > événement distinct). Vérifiez la configuration de votre terminal (ex. :
 > iTerm2 « Send escape sequences » pour les modificateurs).
 
+**Navigation flèches Haut/Bas dans la saisie (2026-11-17)** — demande
+utilisateur : utiliser les flèches haut/bas pour se déplacer entre les
+champs du formulaire. Livré :
+
+- [x] **Haut/Bas naviguent les champs** (Date → Flag → Tiers → Libellé →
+  Tags → Liens → Postings → cycle) quand le champ actif n'est **pas**
+  Postings. Le curseur va à la fin de la valeur du nouveau champ.
+- [x] **Dans le champ Postings** : Haut/Bas conservent leur comportement
+  existant (navigation dans les lignes de postings). Pour passer au champ
+  suivant/précédent, utiliser Tab / Maj+Tab.
+- [x] **Tests de régression** :
+  - `saisie_navigue_champs_avec_fleches_haut_bas` : cycle aller/retour
+    entre champs (arrêt à Postings pour Haut/Bas).
+  - `saisie_fleches_haut_bas_naviguent_postings_dans_champ_postings` :
+    vérifie que dans Postings, Haut/Bas naviguent bien les lignes.
+- [x] Pas de régression : Tab/Maj+Tab/Entrée inchangés, tous les tests
+  passent, `just check` ✓.
+
 **Prochaine action : usage réel** (saisie quotidienne, budgets 2027 via
 l'éditeur).
 
