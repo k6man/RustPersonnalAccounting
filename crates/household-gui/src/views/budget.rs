@@ -49,7 +49,7 @@ pub enum ActionBudget {
     BasculerRollover(String),
 }
 
-/// État de l'écran budget (année sélectionnée, cellule active).
+/// État de l'écran budget (année sélectionnée, cellule active, défilement).
 #[derive(Debug, Clone, Default)]
 pub struct UiState {
     pub annee: i16,
@@ -67,6 +67,11 @@ pub struct UiState {
     /// y vont) — `None` hors édition. Validée par Entrée, annulée par Esc ;
     /// texte vide (après nettoyage) = suppression du commentaire.
     pub edition_commentaire: Option<EditionCommentaire>,
+    /// Première ligne de données affichée (offset de défilement vertical).
+    pub defilement: usize,
+    /// Nombre de lignes de données visibles, mesuré au dernier rendu —
+    /// utilisé par le routage clavier entre deux dessins.
+    pub visibles: usize,
 }
 
 /// Édition d'une cellule budgétaire.
@@ -98,6 +103,8 @@ impl UiState {
             posting_selectionne: 0,
             edition: None,
             edition_commentaire: None,
+            defilement: 0,
+            visibles: 0,
         }
     }
 
@@ -141,6 +148,17 @@ impl UiState {
         if self.mois_selectionne > 0 {
             self.mois_selectionne -= 1;
         }
+    }
+
+    /// Défile de `delta` lignes (positif : vers le bas), borné à
+    /// `[0, nb_total − visibles]`. Un `visibles` de 0 (terminal minuscule)
+    /// est traité comme 1 : le défilement reste utilisable.
+    pub fn defiler(&mut self, nb_total: usize, delta: isize) {
+        let visibles = self.visibles.max(1);
+        let max = nb_total.saturating_sub(visibles);
+        let actuel = self.defilement.min(max) as isize;
+        let cible = actuel + delta;
+        self.defilement = cible.clamp(0, max as isize) as usize;
     }
 }
 
@@ -198,7 +216,7 @@ pub fn afficher(
     .style(Style::default().fg(Color::Gray));
     f.render_widget(aide, chunks[1]);
 
-    // 3. Tableau budget vs réel.
+    // 3. Tableau budget vs réel — fenêtre glissante (défilement vertical).
     let lignes = &grille.rows;
     if lignes.is_empty() {
         let vide = Paragraph::new("Aucune ligne budgétaire pour cette année.")
@@ -212,6 +230,24 @@ pub fn afficher(
         return None;
     }
 
+    let nb_total = lignes.len();
+    let visibles = chunks[2]
+        .height
+        .saturating_sub(3) // bordures + en-tête
+        .saturating_sub(1) // marge
+        as usize;
+    etat.visibles = visibles;
+    etat.defilement = etat
+        .defilement
+        .min(nb_total.saturating_sub(visibles.max(1)));
+
+    // Ajuste la sélection si elle sort de la fenêtre visible.
+    let ligne_idx = etat.ligne_index(Some(grille));
+    if ligne_idx < etat.defilement {
+        etat.ligne_selectionne = etat.defilement;
+    } else if ligne_idx >= etat.defilement + visibles {
+        etat.ligne_selectionne = etat.defilement + visibles - 1;
+    }
     let ligne_idx = etat.ligne_index(Some(grille));
     let mois_idx = etat.mois_selectionne;
     let edition = etat.edition.as_ref();
@@ -237,6 +273,8 @@ pub fn afficher(
     let rows: Vec<Row> = lignes
         .iter()
         .enumerate()
+        .skip(etat.defilement)
+        .take(visibles)
         .map(|(i, ligne)| {
             let selected = i == ligne_idx;
             let style = if selected {
@@ -323,13 +361,26 @@ pub fn afficher(
             .rows
             .get(ligne_idx)
             .map_or_else(|| "?".to_string(), |l| l.account.clone());
-        format!(
+        let mut titre = format!(
             " Budget vs réel — ligne {}/{} · {} · {} ",
             ligne_idx + 1,
             grille.rows.len(),
             mois_noms[mois_idx],
             compte
-        )
+        );
+        // Indicateur de défilement dans le titre quand des lignes sont cachées.
+        if nb_total > visibles {
+            titre = format!(
+                " Budget vs réel — ligne {}/{} · {} · {} · lignes {}/{} ",
+                ligne_idx + 1,
+                grille.rows.len(),
+                mois_noms[mois_idx],
+                compte,
+                etat.defilement + 1,
+                nb_total
+            );
+        }
+        titre
     };
     let tableau = Table::new(rows, widths)
         .header(
@@ -345,9 +396,15 @@ pub fn afficher(
     // Enregistrer les zones cliquables des lignes budgétaires : un clic
     // sélectionne la ligne (affichage), sans écriture dans le ledger. La
     // première rangée de données est 3 lignes sous le haut du bloc :
-    // bordure, en-tête, marge basse d'en-tête.
-    for (i, _ligne) in grille.rows.iter().enumerate() {
-        let ligne_y = chunks[2].top() + 3 + i as u16;
+    // bordure, en-tête, marge basse d'en-tête. On ne prend que les lignes
+    // visibles dans la fenêtre de défilement.
+    for (i, _ligne) in lignes
+        .iter()
+        .enumerate()
+        .skip(etat.defilement)
+        .take(visibles)
+    {
+        let ligne_y = chunks[2].top() + 3 + (i - etat.defilement) as u16;
         if ligne_y >= chunks[2].bottom() {
             break;
         }
@@ -494,6 +551,27 @@ pub fn on_key(
         }
         KeyCode::Down => {
             etat.ligne_suivante(grille);
+            None
+        }
+        KeyCode::PageUp => {
+            let nb_total = grille.map_or(0, |g| g.rows.len());
+            let delta = -(etat.visibles.max(1) as isize);
+            etat.defiler(nb_total, delta);
+            // Ajuste la sélection pour qu'elle reste dans la fenêtre visible.
+            if etat.ligne_selectionne < etat.defilement {
+                etat.ligne_selectionne = etat.defilement;
+            }
+            None
+        }
+        KeyCode::PageDown => {
+            let nb_total = grille.map_or(0, |g| g.rows.len());
+            let delta = etat.visibles.max(1) as isize;
+            etat.defiler(nb_total, delta);
+            if etat.ligne_selectionne >= etat.defilement + etat.visibles {
+                etat.ligne_selectionne = (etat.defilement + etat.visibles)
+                    .min(nb_total)
+                    .saturating_sub(1);
+            }
             None
         }
         KeyCode::Left => {

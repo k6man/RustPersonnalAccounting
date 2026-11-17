@@ -19,6 +19,7 @@
 2026-01-01 custom "budget" Assets:Epargne:LivretA              "monthly"  200.00 EUR
 2026-01-01 custom "budget" Expenses:Alimentation:Restaurants   "monthly"  120.00 EUR
 2026-01-01 custom "budget" Expenses:Alimentation:Courses       "monthly"  850.00 EUR
+; MAFF 2000euro
 2026-01-01 custom "budget" Expenses:Assurances                 "monthly"   25.00 EUR
 2026-01-01 custom "budget" Expenses:Divers                     "monthly"   50.00 EUR
 2026-01-01 custom "budget" Expenses:Frais-Bancaires            "monthly"    4.90 EUR
@@ -57,11 +58,19 @@
 
 # ---- Supersessions datées (à partir du) -------------------------------------
 # Courses : +6 % à partir de juillet.
+
+2026-05-01 custom "budget" Expenses:Assurances "monthly" 30 EUR
+
+
 2026-07-01 custom "budget" Expenses:Alimentation:Courses       "monthly"  900.00 EUR
 # Taxe auto (vignette) payée en mars.
 2026-03-01 custom "budget" Expenses:Transport:Taxe-Auto        "monthly"  230.00 EUR
 2026-04-01 custom "budget" Expenses:Transport:Taxe-Auto        "monthly"    0.00 EUR
 # Taxe foncière réglée en octobre.
+
+2026-08-01 custom "budget" Expenses:Enfants:Activites-Sport-Culture "monthly" 30.00 EUR
+
+
 2026-10-01 custom "budget" Expenses:Logement:Taxe-Fonciere     "monthly" 1150.00 EUR
 2026-11-01 custom "budget" Expenses:Logement:Taxe-Fonciere     "monthly"    0.00 EUR
 # Fournitures scolaires : rentrée de septembre.

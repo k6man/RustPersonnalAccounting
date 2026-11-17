@@ -434,6 +434,8 @@ impl App {
                         | KeyCode::Down
                         | KeyCode::Left
                         | KeyCode::Right
+                        | KeyCode::PageUp
+                        | KeyCode::PageDown
                         | KeyCode::Char('e')
                         | KeyCode::Char('c')
                 );
@@ -558,9 +560,8 @@ impl App {
             return;
         }
 
-        // Molette : Journal (déplace la sélection, comme les flèches) et
-        // Tableau de bord (fait défiler le tableau « Budget vs réel »).
-        // Les autres écrans n'ont pas de défilement pour l'instant.
+        // Molette : Journal (déplace la sélection, comme les flèches), Tableau
+        // de bord et Budget (font défiler leurs tableaux).
         if matches!(
             mouse.kind,
             MouseEventKind::ScrollUp | MouseEventKind::ScrollDown
@@ -588,6 +589,15 @@ impl App {
                     .as_ref()
                     .map_or(0, |d| d.tableau_de_bord.budget_mois.len());
                 self.tableau_de_bord.defiler(nb, delta);
+                return;
+            }
+            if self.ecran_actif == Onglet::Budget.index() {
+                let nb = self
+                    .donnees
+                    .as_ref()
+                    .and_then(|d| d.grilles.get(&self.budget.annee))
+                    .map_or(0, |g| g.rows.len());
+                self.budget.defiler(nb, delta);
                 return;
             }
         }

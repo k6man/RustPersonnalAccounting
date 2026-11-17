@@ -256,6 +256,26 @@ sous la grille. Livré :
 - [x] **Tests TUI** : `c` ouvre pré-rempli, Esc annule sans action, Entrée
   produit l'Action, bande rendue (4 tests).
 
+**Défilement du tableau Budget (onglet 4) (2026-11-17)** — demande
+d'usage : le tableau de l'écran Budget n'avait pas de défilement (toutes
+les lignes rendues, pas de fenêtre glissante). Livré :
+
+- [x] **État de défilement** : `UiState.defilement` / `visibles` (mesuré
+  au rendu, réutilisé par le clavier entre deux dessins).
+- [x] **Fenêtre glissante** : `skip(defilement).take(visibles)` sur les
+  lignes de la grille ; indicateur dans le titre « lignes 4/58 » quand des
+  lignes sont cachées ; ligne sélectionnée auto-ajustée pour rester dans
+  la fenêtre visible.
+- [x] **Clavier** : Page↑/Page↓ défilent d'une fenêtre (sélection
+  maintenue dans la fenêtre) ; ↑/↓ naviguent la sélection (qui auto-scroll
+  déjà) ; les touches sont consommées par l'écran Budget (gate `pour_le_budget`
+  += `PageUp`/`PageDown`).
+- [x] **Molette** : ScrollUp/ScrollDown font défiler sur l'écran Budget
+  (le Journal et le Tableau de bord gardent leur comportement).
+- [x] **Zones cliquables** : mises à jour pour correspondre aux lignes
+  rendues dans la fenêtre (index absolu préservé).
+- [x] **Tests** : existants passent (17 tests budget TUI).
+
 **Prochaine action : usage réel** (saisie quotidienne, budgets 2027 via
 l'éditeur).
 
