@@ -20,7 +20,7 @@ use household_gui::app::{titres_onglets, zones_onglets};
 use household_gui::viewmodel::{
     BudgetVsReel, CascadeAnnee, GraphesData, LigneJournal, PostingVue, RapportsData, UiData,
 };
-use household_gui::views::{budget, git, graphiques, journal, saisie};
+use household_gui::views::{budget, dashboard, git, graphiques, journal, saisie};
 use household_gui::widgets::text_input::TextInput;
 use household_gui::worker::GitDonnees;
 
@@ -81,6 +81,9 @@ fn donnees_test() -> Arc<UiData> {
                 reel: Decimal::new(30985, 2),
             }],
             budget_mois_label: "2026-11".to_string(),
+            total_budgete: Decimal::new(90000, 2),
+            total_reel: Decimal::new(30985, 2),
+            reste_a_depenser: Decimal::new(59015, 2),
             budget_avertissements: vec![],
             courbe: vec![("2026-01".to_string(), Decimal::new(300000, 2))],
         },
@@ -959,6 +962,69 @@ fn budget_rendu_large_toutes_colonnes_visibles() {
     assert!(
         texte.contains("Déc"),
         "la colonne Décembre est rendue sur 80 colonnes"
+    );
+}
+
+#[test]
+fn dashboard_total_et_solde_previsionnel_affiches() {
+    // Ligne TOTAL du mois + bande « solde prévisionnel » : solde CC −
+    // reste à dépenser, avec la formule affichée pour être vérifiable.
+    let donnees = donnees_test();
+    let area = Rect::new(0, 0, 100, 40);
+    let backend = TestBackend::new(area.width, area.height);
+    let mut terminal = ratatui::Terminal::new(backend).unwrap();
+    terminal
+        .draw(|frame| {
+            dashboard::afficher(frame, area, &donnees.tableau_de_bord, &mut Vec::new());
+        })
+        .unwrap();
+    let contenu = terminal.backend().buffer().content().to_vec();
+    let texte: String = contenu
+        .iter()
+        .map(|c| c.symbol().to_string())
+        .collect::<Vec<_>>()
+        .join("");
+
+    assert!(texte.contains("TOTAL"), "ligne de total rendue");
+    // Total budgeté 900,00 / réel 309,85 → reste à dépenser 590,15.
+    assert!(texte.contains("590,15"), "reste à dépenser affiché");
+    // Solde CC 6 877,39 − 590,15 = 6 287,24 (espace fine insécable pour
+    // les milliers, cf. fmt::nombre).
+    assert!(
+        texte.contains(
+            "Solde prévisionnel fin de mois : 6\u{202f}877,39 € − 590,15 € = 6\u{202f}287,24 €"
+        ),
+        "formule complète affichée — buffer : {texte:?}"
+    );
+}
+
+#[test]
+fn dashboard_solde_previsionnel_negatif_en_rouge() {
+    // Si le solde prévisionnel passe en négatif, la bande est en rouge
+    // (le reste à dépenser dépasserait le compte courant).
+    let mut donnees = (*donnees_test()).clone();
+    donnees.tableau_de_bord.solde_cc = Some(Decimal::new(10000, 2)); // 100,00
+    donnees.tableau_de_bord.reste_a_depenser = Decimal::new(50000, 2); // 500,00
+
+    let area = Rect::new(0, 0, 100, 40);
+    let backend = TestBackend::new(area.width, area.height);
+    let mut terminal = ratatui::Terminal::new(backend).unwrap();
+    terminal
+        .draw(|frame| {
+            dashboard::afficher(frame, area, &donnees.tableau_de_bord, &mut Vec::new());
+        })
+        .unwrap();
+    let contenu = terminal.backend().buffer().content().to_vec();
+
+    // La bande est la dernière ligne de l'écran : elle doit contenir du
+    // rouge (texte, pas uniquement des cases vides).
+    let largeur = area.width as usize;
+    let bande = &contenu[contenu.len() - largeur..];
+    assert!(
+        bande
+            .iter()
+            .any(|c| c.symbol() != " " && c.fg == ratatui::style::Color::Red),
+        "la bande prévisionnelle négative est en rouge"
     );
 }
 

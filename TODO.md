@@ -168,11 +168,33 @@ d'onglet avec F1..F7 en plus de Ctrl+1..7. Livré :
 - [x] Barre d'aide : « Ctrl+1..7 ou F1..F7 : écrans · … ».
 - [x] 2 tests unitaires (F1..F7 → les 7 écrans ; F8/F9/F12 sans effet).
 
+**Solde du mois avec prise en compte du budget (2026-11-17)** — demande
+d'usage : « où se trouve le solde du mois avec prise en compte du
+budget ? » → il n'existait nulle part (le bloc « Budget vs réel » du
+dashboard montrait poste par poste, sans total ni solde). Livré sur le
+**Tableau de bord** (F1), bloc « Budget vs réel — AAAA-MM » :
+
+- [x] Ligne **TOTAL** du mois (tous les postes, pas seulement les 8
+  affichés) : Σ Budgeté / Σ Réel / Écart (même convention de signe que
+  les lignes : réel − budgeté), en gras.
+- [x] Bande **« Solde prévisionnel fin de mois »** (1 ligne, sous la
+  table) : `solde CC − reste à dépenser = prévu`, formule affichée pour
+  être vérifiable à la main ; **rouge** si le prévisionnel est négatif,
+  cyan sinon ; « compte courant inconnu » si le CC n'est pas chargé.
+  Définition : le revenu déjà encaissé est dans le solde réel, le reste
+  à dépenser (Σ budgeté − Σ réel des postes de dépenses) partira encore —
+  les budgets du ledger ne portent que des dépenses (aucune ligne Income
+  dans `household-budget`). Postes non-EUR exclus du prévisionnel
+  (aucun aujourd'hui dans le ledger d'exemple).
+- [x] Calcul dans le view-model (`DashboardData.total_budgete /
+  total_reel / reste_a_depenser`, Decimal) — la vue n'affiche que.
+- [x] 2 tests de rendu (formule complète, bande rouge en négatif) ;
+  attention test : `eur()` produit l'**espace fine insécable** pour les
+  milliers — les chaînes attendues dans le buffer doivent l'inclure
+  (`\u{202f}`).
+
 **Prochaine action : usage réel** (saisie quotidienne, budgets 2027 via
-l'éditeur) — le backlog de la revue TUI est **terminé** (#1 à #9), #10
-(AGENTS.md) livré le 2026-11-17 : la doc décrit désormais la TUI
-ratatui (écran unique à onglets, pièges ratatui 0.26/crossterm 0.27,
-routing clavier, tests TestBackend) au lieu de l'ancien egui.
+l'éditeur).
 
 **Décisions tranchées avec la maîtresse d'ouvrage** : une seule fenêtre « Graphiques »
 avec des mini-onglets internes (pas une fenêtre par graphe) ; trois graphes

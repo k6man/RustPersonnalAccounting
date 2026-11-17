@@ -10,6 +10,7 @@ use ratatui::{
 use crate::app::ActionClique;
 use crate::fmt::eur;
 use crate::viewmodel::{DashboardData, EtatJauge};
+use rust_decimal::Decimal;
 
 /// Action utilisateur retournée par l'écran.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -115,8 +116,14 @@ pub fn afficher(
     );
     f.render_widget(patrimoine_texte, chunks[2]);
 
-    // 4. Budget vs réel du mois courant.
-    let bvr_rows: Vec<Row> = donnees
+    // 4. Budget vs réel du mois courant. Le bas est scindé : la table,
+    // puis une bande « solde prévisionnel » d'une ligne.
+    let bas = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Min(0), Constraint::Length(1)])
+        .split(chunks[3]);
+
+    let mut bvr_rows: Vec<Row> = donnees
         .budget_mois
         .iter()
         .take(8)
@@ -136,6 +143,20 @@ pub fn afficher(
             .style(style)
         })
         .collect();
+
+    // Ligne de total du mois (tous les postes, pas seulement les 8
+    // affichés) : même convention de colonnes que les lignes au-dessus.
+    if !donnees.budget_mois.is_empty() {
+        bvr_rows.push(
+            Row::new(vec![
+                format!("{:>10}", eur(donnees.total_budgete)),
+                format!("{:>10}", eur(donnees.total_reel)),
+                format!("{:>10}", eur(donnees.total_reel - donnees.total_budgete)),
+                "TOTAL".to_string(),
+            ])
+            .style(Style::default().add_modifier(Modifier::BOLD)),
+        );
+    }
     if !bvr_rows.is_empty() {
         let bvr_table = Table::new(
             bvr_rows,
@@ -156,7 +177,33 @@ pub fn afficher(
                 .title(format!(" Budget vs réel — {}", donnees.budget_mois_label)),
         )
         .column_spacing(1);
-        f.render_widget(bvr_table, chunks[3]);
+        f.render_widget(bvr_table, bas[0]);
+
+        // Bande « solde prévisionnel » : combien il restera sur le compte
+        // courant à la fin du mois si le budget est respecté. Le revenu
+        // déjà encaissé est dans le solde réel ; le reste à dépenser
+        // partira encore (le budget ne porte que des postes de dépenses).
+        let prevu = donnees
+            .solde_cc
+            .map(|solde| solde - donnees.reste_a_depenser);
+        let texte = match donnees.solde_cc {
+            Some(solde) => format!(
+                " Solde prévisionnel fin de mois : {} − {} = {} ",
+                eur(solde),
+                eur(donnees.reste_a_depenser),
+                eur(prevu.unwrap_or_default())
+            ),
+            None => " Solde prévisionnel fin de mois : compte courant inconnu ".to_string(),
+        };
+        let style = if prevu.is_some_and(|p| p < Decimal::ZERO) {
+            // Le solde irait en négatif : à voir tout de suite.
+            Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)
+        } else {
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD)
+        };
+        f.render_widget(Paragraph::new(texte).style(style), bas[1]);
     } else {
         let vide = Paragraph::new("Aucune donnée budgétaire pour ce mois.").block(
             Block::default()

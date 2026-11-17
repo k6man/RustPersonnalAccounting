@@ -131,6 +131,13 @@ pub struct DashboardData {
     pub budget_mois: Vec<BudgetVsReel>,
     /// Étiquette du mois (« 2026-03 »).
     pub budget_mois_label: String,
+    /// Total budgété du mois courant (postes EUR).
+    pub total_budgete: Decimal,
+    /// Total réel dépensé du mois courant (postes EUR).
+    pub total_reel: Decimal,
+    /// Reste à dépenser : total budgété − total réel (positif : sous le
+    /// budget, négatif : le réel a déjà dépassé le budget global).
+    pub reste_a_depenser: Decimal,
     /// Diagnostics du modèle budgétaire.
     pub budget_avertissements: Vec<String>,
     /// Patrimoine net par fin de mois (courbe d'épargne).
@@ -361,6 +368,24 @@ pub fn build(snapshot: &Snapshot, aujourdhui: NaiveDate) -> Result<UiData, Strin
             .then_with(|| a.ecart().cmp(&b.ecart()))
     });
 
+    // Totaux du mois courant. Les budgets du foyer sont en EUR ; les
+    // postes d'une autre devise (s'il y en a un jour) sont exclus du
+    // solde prévisionnel : ils ne pèsent pas sur le compte courant.
+    let (total_budgete, total_reel) = grilles
+        .get(&annee)
+        .map(|grille| {
+            let cell = usize::from(mois) - 1;
+            grille
+                .rows
+                .iter()
+                .filter(|ligne| ligne.currency == "EUR")
+                .fold((Decimal::ZERO, Decimal::ZERO), |(b, r), ligne| {
+                    (b + ligne.cells[cell].budgeted, r + ligne.cells[cell].actual)
+                })
+        })
+        .unwrap_or((Decimal::ZERO, Decimal::ZERO));
+    let reste_a_depenser = total_budgete - total_reel;
+
     let courbe = courbe_patrimoine(snapshot, &types);
 
     // Rapports : année courante + comparaison N−1.
@@ -394,6 +419,9 @@ pub fn build(snapshot: &Snapshot, aujourdhui: NaiveDate) -> Result<UiData, Strin
             patrimoine_net: patrimoine_net(&soldes, &types),
             budget_mois,
             budget_mois_label: format!("{annee}-{mois:02}"),
+            total_budgete,
+            total_reel,
+            reste_a_depenser,
             budget_avertissements,
             courbe,
         },
