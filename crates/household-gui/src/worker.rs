@@ -14,10 +14,63 @@ use std::sync::mpsc::{Receiver, Sender};
 use std::thread;
 use std::time::Duration;
 
+use rust_decimal::Decimal;
 use rustledger_core::{Directive, IncompleteAmount, NaiveDate};
 
 use crate::saisie::{Brouillon, Empreinte};
 use crate::viewmodel::{self, UiData};
+use household_core::importer::ImporterProfile;
+
+/// Une transaction extraite par `rledger extract` — pour aperçu avant écriture.
+/// Contient l'essentiel pour l'affichage et la confirmation utilisateur.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TransactionImportee {
+    /// Date de la transaction.
+    pub date: NaiveDate,
+    /// Flag : `'*'` (pointée) ou `'!'` (en attente).
+    pub flag: char,
+    /// Tiers (payee) — peut être absent.
+    pub tiers: Option<String>,
+    /// Libellé (narration).
+    pub libelle: String,
+    /// Tags (ex: `#courses #alimentation`).
+    pub tags: Vec<String>,
+    /// Liens (ex: `^facture-123`).
+    pub liens: Vec<String>,
+    /// Postings : (compte, montant, devise). Le montant inclut le signe.
+    pub postings: Vec<(String, Decimal, String)>,
+    /// Compte cible déduit du premier posting (celui qui correspond au profil).
+    pub compte_cible: String,
+    /// Devise principale (du premier posting significatif).
+    pub devise: String,
+    /// Avertissements/notes du parseur (ex: compte par défaut utilisé).
+    pub avertissements: Vec<String>,
+}
+
+impl TransactionImportee {
+    /// Convertit en `Brouillon` pour réutiliser la validation de forme +
+    /// l'écriture via le writer existant.
+    pub fn vers_brouillon(&self) -> Brouillon {
+        let mut lignes = Vec::new();
+        for (compte, montant, devise) in &self.postings {
+            // Decimal::Display inclut déjà le signe pour les négatifs.
+            let montant_str = format!("{montant} {devise}");
+            lignes.push(crate::saisie::LigneBrouillon {
+                compte: compte.clone(),
+                montant: montant_str,
+            });
+        }
+        Brouillon {
+            date: self.date.to_string(),
+            flag: self.flag,
+            tiers: self.tiers.clone().unwrap_or_default(),
+            libelle: self.libelle.clone(),
+            tags: self.tags.join(" "),
+            liens: self.liens.join(" "),
+            lignes,
+        }
+    }
+}
 
 /// Envoie une valeur sur un canal sans paniquer si le recepteur est ferme.
 /// Loggue un avertissement si le message est perdu (canal deconecte).
@@ -77,6 +130,29 @@ pub enum Command {
         /// Message de commit.
         message: String,
     },
+    /// Import bancaire : lancer `rledger extract` sur un fichier source
+    /// avec un profil nommé → retourne les transactions extraites pour
+    /// aperçu (preview) avant confirmation.
+    Importer {
+        /// Chemin du fichier source (CSV/OFX).
+        fichier_source: PathBuf,
+        /// Nom du profil dans importers.toml (ex: "bnp-csv").
+        profil_name: String,
+        /// Surcharge optionnelle du compte cible (sinon celui du profil).
+        compte_cible_override: Option<String>,
+        /// Surcharge optionnelle de la devise (sinon celle du profil).
+        currency_override: Option<String>,
+        /// Utiliser `--existing` pour détecter les doublons (fichier ledger).
+        detecter_doublons: bool,
+        /// Utiliser `--suggest-categories` pour catégorisation ML (nécessite --existing).
+        suggérer_catégories: bool,
+    },
+    /// Import bancaire : écrire les transactions confirmées (après preview).
+    /// Réutilise le writer transactionnel existant (append_transaction).
+    ImporterEcrire {
+        /// Transactions à écrire (converties en Brouillon).
+        transactions: Vec<Brouillon>,
+    },
 }
 
 /// Réponses du worker vers l'UI.
@@ -107,6 +183,15 @@ pub enum LoadOutcome {
         donnees: GitDonnees,
         /// Message flash : `Some((texte, est_erreur))`.
         message: Option<(String, bool)>,
+    },
+    /// Import bancaire : transactions extraites pour aperçu (preview).
+    /// L'UI les affiche dans un tableau ; l'utilisateur confirme ou annule.
+    Importe {
+        transactions: Vec<TransactionImportee>,
+        /// Message récapitulatif (nb transactions, profil utilisé).
+        message: String,
+        /// Avertissements globaux (ex: lignes ignorées, comptes par défaut).
+        avertissements: Vec<String>,
     },
 }
 
@@ -238,6 +323,35 @@ pub fn demarrer(main: PathBuf) -> (Sender<Command>, Receiver<LoadOutcome>) {
                 }
                 Command::GitCommit { message } => {
                     send_sans_panique(&out_tx, git_resultat(&main, Some(&message)), "commit git");
+                }
+                Command::Importer {
+                    fichier_source,
+                    profil_name,
+                    compte_cible_override,
+                    currency_override,
+                    detecter_doublons,
+                    suggérer_catégories,
+                } => {
+                    send_sans_panique(
+                        &out_tx,
+                        importer(
+                            &main,
+                            &fichier_source,
+                            &profil_name,
+                            compte_cible_override.as_deref(),
+                            currency_override.as_deref(),
+                            detecter_doublons,
+                            suggérer_catégories,
+                        ),
+                        "import bancaire",
+                    );
+                }
+                Command::ImporterEcrire { transactions } => {
+                    send_sans_panique(
+                        &out_tx,
+                        importer_ecrire(&main, transactions),
+                        "ecriture import bancaire",
+                    );
                 }
             }
         }
@@ -624,4 +738,355 @@ pub fn demarrer_watcher(main: &Path, cmd_tx: Sender<Command>) -> notify::Recomme
 #[must_use]
 pub fn aujourd_hui() -> NaiveDate {
     jiff::Zoned::now().date()
+}
+
+/// Import bancaire : lance `rledger extract` et parse la sortie beancount.
+/// Retourne les transactions extraites pour preview (LoadOutcome::Importe).
+fn importer(
+    main: &Path,
+    fichier_source: &Path,
+    profil_name: &str,
+    compte_cible_override: Option<&str>,
+    currency_override: Option<&str>,
+    detecter_doublons: bool,
+    suggérer_catégories: bool,
+) -> LoadOutcome {
+    // 1. Résoudre le fichier importers.toml pour ce ledger
+    let (config, resolution) = household_core::charger_importers_pour_ledger(main);
+    let config_path = match resolution.chemin {
+        Some(p) => p,
+        None => {
+            return LoadOutcome::Refuse(
+                "aucun importers.toml trouvé (racine du ledger ni ~/.config/rust-personal-accounting/)".to_string(),
+            );
+        }
+    };
+
+    // 2. Trouver le profil demandé
+    let profil = match config.importers.iter().find(|p| p.name == profil_name) {
+        Some(p) => p,
+        None => {
+            return LoadOutcome::Refuse(format!(
+                "profil '{}' introuvable dans {}",
+                profil_name,
+                config_path.display()
+            ));
+        }
+    };
+
+    // 3. Construire la commande rledger extract
+    let mut cmd = tokio::process::Command::new("rledger");
+    cmd.arg("extract")
+        .arg("--config")
+        .arg(&config_path)
+        .arg("--profile")
+        .arg(profil_name)
+        .arg(fichier_source);
+
+    // Surcharges optionnelles
+    if let Some(compte) = compte_cible_override {
+        cmd.arg("--account").arg(compte);
+    }
+    if let Some(currency) = currency_override {
+        cmd.arg("--currency").arg(currency);
+    }
+
+    // Détection doublons : --existing <ledger_file>
+    if detecter_doublons {
+        cmd.arg("--existing").arg(main);
+    }
+
+    // Suggestion catégories ML : --suggest-categories (nécessite --existing)
+    if suggérer_catégories {
+        if !detecter_doublons {
+            return LoadOutcome::Refuse(
+                "--suggest-categories nécessite --existing (détection doublons activée)"
+                    .to_string(),
+            );
+        }
+        cmd.arg("--suggest-categories");
+    }
+
+    // 4. Exécuter (bloquant via block_on sur un runtime tokio minimal)
+    let rt = match tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+    {
+        Ok(rt) => rt,
+        Err(e) => return LoadOutcome::Echec(format!("échec création runtime tokio : {e}")),
+    };
+    let output = rt.block_on(cmd.output());
+
+    let output = match output {
+        Ok(o) => o,
+        Err(e) => return LoadOutcome::Echec(format!("échec exécution rledger extract : {e}")),
+    };
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return LoadOutcome::Refuse(format!("rledger extract a échoué : {stderr}"));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    // 5. Parser la sortie beancount
+    match parser_sortie_beancount(&stdout, profil) {
+        Ok((transactions, mut avertissements)) => {
+            // Capturer infos depuis stderr (doublons filtrés, suggestions ML)
+            if detecter_doublons
+                && let Some(nb) = extraire_nb_doublons_filtres(&stderr)
+                && nb > 0
+            {
+                avertissements.push(format!("{} doublon(s) filtré(s) par --existing", nb));
+            }
+            if suggérer_catégories && let Some((recat, total)) = extraire_ml_suggestions(&stderr)
+            {
+                avertissements.push(format!(
+                    "ML : {}/{} transaction(s) re-catégorisée(s)",
+                    recat, total
+                ));
+            }
+
+            let message = format!(
+                "{} transaction(s) extraite(s) via profil '{}'",
+                transactions.len(),
+                profil_name
+            );
+            LoadOutcome::Importe {
+                transactions,
+                message,
+                avertissements,
+            }
+        }
+        Err(e) => LoadOutcome::Echec(format!("échec parsing sortie rledger : {e}")),
+    }
+}
+
+/// Extrait le nombre de doublons filtrés depuis stderr.
+/// Format attendu : "Filtered 1 duplicate transaction(s)"
+fn extraire_nb_doublons_filtres(stderr: &str) -> Option<usize> {
+    for ligne in stderr.lines() {
+        if let Some(rest) = ligne.strip_prefix("Filtered ")
+            && let Some(nb_str) = rest.strip_suffix(" duplicate transaction(s)")
+        {
+            return nb_str.trim().parse().ok();
+        }
+    }
+    None
+}
+
+/// Extrait les stats de suggestions ML depuis stderr.
+/// Format attendu : "ML suggestions: re-categorized 0/1 fallback transaction(s)"
+fn extraire_ml_suggestions(stderr: &str) -> Option<(usize, usize)> {
+    for ligne in stderr.lines() {
+        if let Some(rest) = ligne.strip_prefix("ML suggestions: re-categorized ")
+            && let Some((recat_str, total_str)) = rest.split_once("/")
+        {
+            let recat = recat_str.trim().parse().ok()?;
+            let total = total_str
+                .strip_suffix(" fallback transaction(s)")
+                .unwrap_or(total_str)
+                .trim()
+                .parse()
+                .ok()?;
+            return Some((recat, total));
+        }
+    }
+    None
+}
+
+/// Écrit les transactions importées confirmées (après preview).
+/// Réutilise append_transaction pour chaque transaction.
+fn importer_ecrire(main: &Path, transactions: Vec<Brouillon>) -> LoadOutcome {
+    if transactions.is_empty() {
+        return LoadOutcome::Refuse("aucune transaction à écrire".to_string());
+    }
+
+    let snapshot = match household_core::Snapshot::load(main) {
+        Ok(s) => s,
+        Err(e) => return LoadOutcome::Echec(e.to_string()),
+    };
+
+    let mut snapshot_actuel = snapshot;
+    let mut fichiers_cibles = Vec::new();
+
+    for brouillon in &transactions {
+        let transaction = match brouillon.vers_transaction() {
+            Ok(t) => t,
+            Err(erreurs) => {
+                return LoadOutcome::Refuse(format!(
+                    "validation forme échouée : {}",
+                    erreurs.join(" · ")
+                ));
+            }
+        };
+        let date = transaction.date;
+
+        match household_core::append_transaction(&snapshot_actuel, &transaction) {
+            Ok(nouveau) => {
+                snapshot_actuel = nouveau;
+                fichiers_cibles.push(household_core::monthly_file(main, date));
+            }
+            Err(e) => return LoadOutcome::Refuse(format!("écriture refusée : {e}")),
+        }
+    }
+
+    match donnees_fraiches(&snapshot_actuel) {
+        Ok(donnees) => {
+            let message = if fichiers_cibles.len() == 1 {
+                format!("écrite dans {}", fichiers_cibles[0].display())
+            } else {
+                format!(
+                    "{} transactions écrites dans {} fichiers mensuels",
+                    transactions.len(),
+                    fichiers_cibles.len()
+                )
+            };
+            LoadOutcome::Ecrit { donnees, message }
+        }
+        Err(e) => LoadOutcome::Echec(e),
+    }
+}
+
+/// Parse la sortie texte beancount de `rledger extract` en `TransactionImportee`.
+/// Format attendu (exemple) :
+/// ```text
+/// 2024-01-15 * "Supermarket"
+///   Assets:Test   -45.67 EUR
+///   Expenses:Unknown
+/// 2024-01-16 * "Salary"
+///   Assets:Test  2500.00 EUR
+///   Income:Unknown
+/// ```
+fn parser_sortie_beancount(
+    sortie: &str,
+    profil: &ImporterProfile,
+) -> Result<(Vec<TransactionImportee>, Vec<String>), String> {
+    let mut transactions = Vec::new();
+    let mut avertissements = Vec::new();
+    let mut lignes = sortie.lines().peekable();
+
+    // Détecter le compte cible par défaut du profil
+    let compte_cible_defaut = &profil.account;
+
+    while lignes.peek().is_some() {
+        // Ignorer lignes vides et ligne de résumé finale
+        let ligne = match lignes.next() {
+            Some(l) => l.trim(),
+            None => break,
+        };
+        if ligne.is_empty() || ligne.starts_with("Extracted ") {
+            continue;
+        }
+
+        // Ligne d'en-tête : date flag "narration"
+        // Ex: 2024-01-15 * "Supermarket"
+        let (date, flag, narration, _reste_ligne) = match parser_ligne_entete(ligne) {
+            Ok(v) => v,
+            Err(e) => {
+                avertissements.push(format!("ligne d'en-tête invalide ignorée : {e}"));
+                continue;
+            }
+        };
+
+        // Parser les postings (lignes indentées suivantes)
+        let mut postings = Vec::new();
+        while let Some(&next) = lignes.peek() {
+            let trimmed = next.trim_start();
+            if trimmed.is_empty() || !next.starts_with("  ") && !next.starts_with('\t') {
+                break; // Fin de cette transaction
+            }
+            lignes.next(); // Consommer
+            if let Some(posting) = parser_posting(trimmed) {
+                postings.push(posting);
+            }
+        }
+
+        if postings.is_empty() {
+            avertissements.push(format!("transaction {} sans postings ignorée", date));
+            continue;
+        }
+
+        // Déterminer le compte cible : premier posting dont le compte correspond
+        // au profil, ou sinon le premier posting
+        let compte_cible = postings
+            .iter()
+            .find(|(c, _, _)| c == compte_cible_defaut)
+            .map(|(c, _, _)| c.clone())
+            .unwrap_or_else(|| postings[0].0.clone());
+
+        // Devise principale : devise du premier posting avec montant non nul
+        let devise = postings
+            .iter()
+            .find(|(_, m, _)| !m.is_zero())
+            .map(|(_, _, d)| d.clone())
+            .unwrap_or_else(|| "EUR".to_string());
+
+        // Extraire tiers depuis narration si format "Tiers - Libellé" ou via payee
+        // Pour l'instant, on met tout dans libellé et tiers = None
+        // TODO: améliorer avec les métadonnées payee si rledger les sort
+        let (tiers, libelle) = extraire_tiers_libelle(&narration);
+
+        transactions.push(TransactionImportee {
+            date,
+            flag,
+            tiers,
+            libelle,
+            tags: Vec::new(),
+            liens: Vec::new(),
+            postings,
+            compte_cible,
+            devise,
+            avertissements: Vec::new(),
+        });
+    }
+
+    if transactions.is_empty() {
+        avertissements.push("aucune transaction extraite".to_string());
+    }
+
+    Ok((transactions, avertissements))
+}
+
+/// Parse une ligne d'en-tête beancount : `2024-01-15 * "Supermarket"`
+fn parser_ligne_entete(ligne: &str) -> Result<(NaiveDate, char, String, String), String> {
+    let mut parts = ligne.splitn(3, ' ');
+    let date_str = parts.next().ok_or("date manquante")?;
+    let flag_str = parts.next().ok_or("flag manquant")?;
+    let narration = parts.next().unwrap_or("").trim().trim_matches('"');
+
+    let date = NaiveDate::strptime("%Y-%m-%d", date_str)
+        .map_err(|e| format!("date invalide {date_str}: {e}"))?;
+    let flag = flag_str.chars().next().ok_or("flag vide")?;
+    if flag != '*' && flag != '!' {
+        return Err(format!("flag invalide : {flag}"));
+    }
+
+    Ok((date, flag, narration.to_string(), String::new()))
+}
+
+/// Parse une ligne de posting : `  Assets:Test   -45.67 EUR`
+fn parser_posting(ligne: &str) -> Option<(String, Decimal, String)> {
+    let mut parts = ligne.split_whitespace();
+    let compte = parts.next()?.to_string();
+    let montant_str = parts.next()?;
+    let devise = parts.next().unwrap_or("EUR").to_string();
+
+    // Parser le montant (peut avoir un signe)
+    let montant = montant_str.parse::<Decimal>().ok()?;
+
+    Some((compte, montant, devise))
+}
+
+/// Extraction basique tiers/libellé depuis la narration.
+/// Si narration contient " - ", on split (Tiers - Libellé).
+fn extraire_tiers_libelle(narration: &str) -> (Option<String>, String) {
+    if let Some(idx) = narration.find(" - ") {
+        let tiers = narration[..idx].trim().to_string();
+        let libelle = narration[idx + 3..].trim().to_string();
+        (Some(tiers), libelle)
+    } else {
+        (None, narration.to_string())
+    }
 }

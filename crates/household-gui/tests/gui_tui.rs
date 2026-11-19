@@ -1912,13 +1912,13 @@ fn onglets_zones_largeurs_reelles() {
     // alors que le rendu proportionne chaque onglet à son libellé — les
     // clics sélectionnaient le mauvais onglet.
     let titres = titres_onglets();
-    assert_eq!(titres.len(), 7);
+    assert_eq!(titres.len(), 8);
 
     let area = buffer_rect();
     let zones = zones_onglets(&titres, area);
     assert_eq!(
         zones.len(),
-        7,
+        8,
         "tous les onglets tiennent dans 120 colonnes"
     );
 

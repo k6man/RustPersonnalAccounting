@@ -15,13 +15,13 @@ use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Clear, List, ListItem, Paragraph},
+    widgets::{Block, Borders, Clear, List, ListItem, Paragraph, TableState},
 };
 
 use household_core::ResolutionLedger;
 
 use crate::viewmodel::UiData;
-use crate::views::{budget, dashboard, git, graphiques, journal, rapports, saisie};
+use crate::views::{budget, dashboard, git, graphiques, import, journal, rapports, saisie};
 use crate::worker::{Command, LoadOutcome};
 
 /// Durée d'affichage d'un flash de succès ; les erreurs restent affichées
@@ -38,10 +38,11 @@ pub enum Onglet {
     Rapports,
     Graphiques,
     Git,
+    Import,
 }
 
 impl Onglet {
-    const TOUS: [Onglet; 7] = [
+    const TOUS: [Onglet; 8] = [
         Onglet::TableauDeBord,
         Onglet::Journal,
         Onglet::Saisie,
@@ -49,6 +50,7 @@ impl Onglet {
         Onglet::Rapports,
         Onglet::Graphiques,
         Onglet::Git,
+        Onglet::Import,
     ];
 
     fn libelle(self) -> &'static str {
@@ -60,6 +62,7 @@ impl Onglet {
             Self::Rapports => "Rapports",
             Self::Graphiques => "Graphiques",
             Self::Git => "Git",
+            Self::Import => "Import",
         }
     }
 
@@ -80,6 +83,7 @@ impl Onglet {
             Some("rapports") => Some(Self::Rapports),
             Some("graphiques") | Some("graphes") => Some(Self::Graphiques),
             Some("git") => Some(Self::Git),
+            Some("import") => Some(Self::Import),
             Some("dashboard") | Some("tableau") => Some(Self::TableauDeBord),
             _ => None,
         }
@@ -88,8 +92,8 @@ impl Onglet {
 
 /// L'application.
 pub struct App {
-    main: PathBuf,
-    resolu: ResolutionLedger,
+    pub main: PathBuf,
+    pub resolu: ResolutionLedger,
     cmd_tx: Sender<Command>,
     outcome_rx: Receiver<LoadOutcome>,
     _watcher: notify::RecommendedWatcher,
@@ -113,6 +117,7 @@ pub struct App {
     budget: crate::views::budget::UiState,
     git: crate::views::git::UiState,
     graphiques: crate::views::graphiques::UiState,
+    pub import: crate::views::import::UiState,
     git_donnees: Option<crate::worker::GitDonnees>,
     config: crate::config::Config,
 
@@ -177,6 +182,7 @@ impl App {
             budget: crate::views::budget::UiState::nouveau(crate::worker::aujourd_hui().year()),
             git: crate::views::git::UiState::nouveau(),
             graphiques: crate::views::graphiques::UiState::nouveau(),
+            import: crate::views::import::UiState::default(),
             git_donnees: None,
             config: crate::config::Config::charger(),
             zones_cliquables: Vec::new(),
@@ -256,6 +262,19 @@ impl App {
                 if let Some((texte, est_erreur)) = message {
                     self.notifier(texte, est_erreur);
                 }
+            }
+            LoadOutcome::Importe {
+                transactions,
+                message,
+                avertissements,
+            } => {
+                // Déléguer à l'état de l'écran Import.
+                self.import.traiter_outcome(&LoadOutcome::Importe {
+                    transactions,
+                    message,
+                    avertissements,
+                });
+                self.en_chargement = false;
             }
         }
         self.en_chargement = false;
@@ -494,6 +513,67 @@ impl App {
                 }
                 return false;
             }
+        }
+
+        // Import : délégation à l'état de l'écran (gère tout sauf Ctrl+C/Esc global).
+        if self.ecran_actif == Onglet::Import.index() {
+            let action = self.import.on_key(key);
+            match action {
+                crate::views::import::Action::ChoisirFichierEtImporter => {
+                    // Ouvrir sélecteur de fichier (rfd) et lancer import
+                    // Il faut cloner le nom du profil AVANT de modifier self.import
+                    let profil_name = self.import.profil_actuel().map(|p| p.name.clone());
+                    if let Some(profil_name) = profil_name {
+                        let fichier = rfd::FileDialog::new()
+                            .set_title(format!("Fichier à importer — profil : {}", profil_name))
+                            .add_filter("CSV", &["csv"])
+                            .add_filter("OFX/QFX", &["ofx", "qfx"])
+                            .add_filter("Tous", &["*"])
+                            .pick_file();
+                        if let Some(fichier) = fichier {
+                            self.import.fichier_source = Some(fichier.clone());
+                            self.import.en_chargement = true;
+                            self.import.derniere_erreur = None;
+                            self.import.preview.clear();
+                            self.import.message_import = None;
+                            self.import.avertissements_import.clear();
+                            self.import.table_state = TableState::default();
+                            self.import.defilement = 0;
+                            let _ = self.cmd_tx.send(Command::Importer {
+                                fichier_source: fichier,
+                                profil_name,
+                                compte_cible_override: None,
+                                currency_override: None,
+                                detecter_doublons: self.import.detecter_doublons,
+                                suggérer_catégories: self.import.suggérer_catégories,
+                            });
+                        }
+                    }
+                }
+                crate::views::import::Action::ConfirmerEcriture => {
+                    if !self.import.preview.is_empty() {
+                        let brouillons: Vec<_> = self
+                            .import
+                            .preview
+                            .iter()
+                            .map(|t| t.vers_brouillon())
+                            .collect();
+                        self.import.en_chargement = true;
+                        self.import.derniere_erreur = None;
+                        let _ = self.cmd_tx.send(Command::ImporterEcrire {
+                            transactions: brouillons,
+                        });
+                    }
+                }
+                crate::views::import::Action::RechargerProfils => {
+                    self.import.charger_profils(&self.main);
+                }
+                crate::views::import::Action::Annuler => {
+                    self.import.reset_apres_ecriture();
+                }
+                crate::views::import::Action::Aucun => {}
+            }
+            return false;
         }
 
         // Journal : flèches/Entrée/Suppr. La sélection navigue dans les
@@ -1020,6 +1100,9 @@ impl App {
                     f.render_widget(paragraphe, area);
                 }
             },
+            Onglet::Import => {
+                import::render(f, &mut self.import, &self.main, area);
+            }
         }
     }
 
@@ -1255,13 +1338,22 @@ mod tests {
     fn f8_et_au_dela_ne_font_rien() {
         let mut app = app_test();
         app.ecran_actif = Onglet::Budget.index();
-        for n in [8u8, 9, 12] {
+        // F8 change maintenant vers Import (8ᵉ onglet)
+        let quitte = app.on_key(touche(KeyCode::F(8)));
+        assert!(!quitte);
+        assert_eq!(
+            app.ecran_actif,
+            Onglet::Import.index(),
+            "F8 doit changer vers Import"
+        );
+        // F9 et au-delà sont ignorés (plus de 8 onglets)
+        for n in [9u8, 12] {
             let quitte = app.on_key(touche(KeyCode::F(n)));
             assert!(!quitte);
             assert_eq!(
                 app.ecran_actif,
-                Onglet::Budget.index(),
-                "F{n} ne doit pas changer d'écran"
+                Onglet::Import.index(),
+                "F{n} ne doit pas changer d'écran au-delà de 8"
             );
         }
     }

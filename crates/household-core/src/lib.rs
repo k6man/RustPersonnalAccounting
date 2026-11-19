@@ -23,11 +23,16 @@
 //! `EndOfDay`).
 
 pub mod error;
+pub mod importer;
 pub mod resolution;
 pub mod snapshot;
 pub mod writer;
 
 pub use error::CoreError;
+pub use importer::{
+    ImporterProfile, ImportersConfig, ResolutionImporters, SourceImporters,
+    charger_importers_pour_ledger, resoudre_importers,
+};
 pub use resolution::{
     EXEMPLE_RELATIF, ModeLedger, ResolutionLedger, SourceResolution, VAR_ENV, resoudre_ledger,
 };

@@ -1,0 +1,149 @@
+# importers.toml — Configuration des importateurs bancaires pour rledger extract
+#
+# Ce fichier définit des profils d'import pour CSV et OFX/QFX.
+# Il est lu par `rledger extract --config importers.toml --profile <nom>`
+# et par l'écran « Import » de l'application.
+#
+# Ordre de recherche automatique (sans --config) :
+#   1. importers.toml à la racine du ledger (à côté de main.beancount)
+#   2. ~/.config/rust-personal-accounting/importers.toml
+#   3. Fichier passé explicitement via --config
+#
+# Syntaxe : chaque profil est une table [[importers]] avec :
+#   - name       : identifiant unique du profil (pour --profile)
+#   - type       : moteur ("csv" ou "ofx")
+#   - account    : compte cible par défaut (peut être surchargé par --account)
+#   - currency   : devise par défaut (peut être surchargée par --currency)
+#   - ...        : options CSV à plat (pas de table `options` imbriquée)
+#
+# Moteur CSV — options reconnues (toutes au niveau de la table, pas dans `options`) :
+#   date_column      = "Date"           # nom ou index de la colonne date
+#   date_format      = "%Y-%m-%d"       # format strftime
+#   narration_column = "Description"    # colonne libellé
+#   payee_column     = "Payee"          # colonne tiers (optionnel)
+#   amount_column    = "Amount"         # colonne montant
+#   currency_column  = "Currency"       # colonne devise par ligne (optionnel)
+#   amount_locale    = "fr_FR"          # locale pour parser les montants
+#   amount_format    = ""               # format custom (ex: "#,##0.00")
+#   debit_column     = "Debit"          # colonne débit (si débit/crédit séparés)
+#   credit_column    = "Credit"         # colonne crédit (si débit/crédit séparés)
+#   delimiter        = ","              # séparateur CSV
+#   skip_rows        = 0                # lignes d'en-tête à ignorer
+#   skip_header      = false            # alias de skip_rows
+#   invert_amounts   = false            # inverser le signe des montants
+#   invert_sign      = false            # alias de invert_amounts
+#   include_zero_amounts = false        # garder les lignes à 0
+#   auto             = false            # auto-détection format CSV
+#   no_header        = false            # pas de ligne d'en-tête
+#   use_merchant_dict = true            # catégoriser via dictionnaire marchands
+#   default_expense  = "Expenses:Unknown" # compte de dépense par défaut
+#   default_income   = "Income:Unknown"   # compte de revenu par défaut
+#   mappings         = []               # règles de catégorisation (voir docs rledger)
+#   preprocess       = ""               # script de prétraitement (optionnel)
+#
+# Moteur OFX — options reconnues :
+#   (les options CSV sont ignorées ; le parsing OFX est standard)
+
+[[importers]]
+name = "credit-mutuel-csv"
+type = "csv"
+account = "Liabilities:CreditMutuel:Visa"
+currency = "EUR"
+date_column = "Date opération"
+date_format = "%d/%m/%Y"
+narration_column = "Libellé"
+payee_column = "Tiers"
+amount_column = "Montant"
+amount_locale = "fr_FR"
+delimiter = ";"
+use_merchant_dict = true
+
+[[importers]]
+name = "boursorama-csv"
+type = "csv"
+account = "Assets:Boursorama:Cheque"
+currency = "EUR"
+date_column = "Date"
+date_format = "%Y-%m-%d"
+narration_column = "Libellé"
+payee_column = "Bénéficiaire"
+amount_column = "Montant"
+amount_locale = "fr_FR"
+delimiter = ","
+use_merchant_dict = true
+
+[[importers]]
+name = "lcl-csv"
+type = "csv"
+account = "Assets:LCL:CompteCourant"
+currency = "EUR"
+date_column = "Date"
+date_format = "%d/%m/%Y"
+narration_column = "Libellé"
+payee_column = "Tiers"
+amount_column = "Montant"
+amount_locale = "fr_FR"
+delimiter = ";"
+invert_sign = true
+use_merchant_dict = true
+
+[[importers]]
+name = "bnp-csv"
+type = "csv"
+account = "Assets:BNP:CompteCourant"
+currency = "EUR"
+date_column = "Date"
+date_format = "%d/%m/%Y"
+narration_column = "Libellé"
+payee_column = "Tiers"
+debit_column = "Débit"
+credit_column = "Crédit"
+amount_locale = "fr_FR"
+delimiter = ";"
+use_merchant_dict = true
+
+[[importers]]
+name = "generic-euro-csv"
+type = "csv"
+account = "Assets:Banque:CompteCourant"
+currency = "EUR"
+date_column = "Date"
+date_format = "%Y-%m-%d"
+narration_column = "Description"
+payee_column = "Payee"
+amount_column = "Amount"
+amount_locale = "en_US"
+delimiter = ","
+use_merchant_dict = true
+
+[[importers]]
+name = "generic-usd-csv"
+type = "csv"
+account = "Assets:Bank:Checking"
+currency = "USD"
+date_column = "Date"
+date_format = "%m/%d/%Y"
+narration_column = "Description"
+payee_column = "Payee"
+amount_column = "Amount"
+amount_locale = "en_US"
+delimiter = ","
+use_merchant_dict = true
+
+[[importers]]
+name = "credit-mutuel-ofx"
+type = "ofx"
+account = "Liabilities:CreditMutuel:Visa"
+currency = "EUR"
+
+[[importers]]
+name = "boursorama-ofx"
+type = "ofx"
+account = "Assets:Boursorama:Cheque"
+currency = "EUR"
+
+[[importers]]
+name = "bnp-ofx"
+type = "ofx"
+account = "Assets:BNP:CompteCourant"
+currency = "EUR"
