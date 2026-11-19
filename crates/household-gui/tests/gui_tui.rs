@@ -20,9 +20,11 @@ use household_gui::app::{titres_onglets, zones_onglets};
 use household_gui::viewmodel::{
     BudgetVsReel, CascadeAnnee, GraphesData, LigneJournal, PostingVue, RapportsData, UiData,
 };
-use household_gui::views::{budget, dashboard, git, graphiques, journal, saisie};
+use household_gui::views::{budget, dashboard, git, graphiques, import, journal, saisie};
 use household_gui::widgets::text_input::TextInput;
 use household_gui::worker::GitDonnees;
+
+mod common;
 
 // ----------------------------------------------------------------- helpers ---
 
@@ -1971,4 +1973,42 @@ fn onglets_clic_renomme_le_bon_onglet() {
             }
         }
     }
+}
+
+#[test]
+fn import_render_ne_panique_pas() {
+    // L'écran Import doit rendre sans paniquer, même sans profils chargés.
+    let mut etat = import::UiState::default();
+    let main = std::path::Path::new("examples/ledger/main.beancount");
+    render_safe(buffer_rect(), |f| {
+        import::render(f, &mut etat, main, buffer_rect());
+    });
+}
+
+#[test]
+fn import_a_profils_predefinis_dans_exemple() {
+    use common::{cleanup, ledger_copy};
+    // Le ledger d'exemple contient un importers.toml avec 9 profils.
+    // On utilise ledger_copy() pour avoir un chemin absolu valide (le test
+    // copie le ledger d'exemple dans un scratch, y compris importers.toml).
+    let main = ledger_copy();
+    let mut etat = import::UiState::default();
+    // Forcer le chargement des profils
+    etat.charger_profils(&main);
+    assert!(
+        !etat.profils.is_empty(),
+        "doit charger les profils depuis l'exemple"
+    );
+    assert_eq!(
+        etat.profils.len(),
+        9,
+        "9 profils dans l'exemple (5 CSV + 2 OFX + 2 BNP)"
+    );
+    // Vérifier quelques profils connus
+    let noms: Vec<_> = etat.profils.iter().map(|p| p.name.clone()).collect();
+    assert!(noms.contains(&"bnp-csv".to_string()));
+    assert!(noms.contains(&"credit-mutuel-csv".to_string()));
+    assert!(noms.contains(&"boursorama-csv".to_string()));
+    // Nettoyer le scratch
+    cleanup(main.parent().unwrap().parent().unwrap());
 }

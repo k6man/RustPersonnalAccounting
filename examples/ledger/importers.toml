@@ -35,7 +35,7 @@
 #   include_zero_amounts = false        # garder les lignes à 0
 #   auto             = false            # auto-détection format CSV
 #   no_header        = false            # pas de ligne d'en-tête
-#   use_merchant_dict = true            # catégoriser via dictionnaire marchands
+#   use_merchant_dict = "true"            # catégoriser via dictionnaire marchands
 #   default_expense  = "Expenses:Unknown" # compte de dépense par défaut
 #   default_income   = "Income:Unknown"   # compte de revenu par défaut
 #   mappings         = []               # règles de catégorisation (voir docs rledger)
@@ -56,7 +56,7 @@ payee_column = "Tiers"
 amount_column = "Montant"
 amount_locale = "fr_FR"
 delimiter = ";"
-use_merchant_dict = true
+use_merchant_dict = "true"
 
 [[importers]]
 name = "boursorama-csv"
@@ -70,7 +70,7 @@ payee_column = "Bénéficiaire"
 amount_column = "Montant"
 amount_locale = "fr_FR"
 delimiter = ","
-use_merchant_dict = true
+use_merchant_dict = "true"
 
 [[importers]]
 name = "lcl-csv"
@@ -84,8 +84,8 @@ payee_column = "Tiers"
 amount_column = "Montant"
 amount_locale = "fr_FR"
 delimiter = ";"
-invert_sign = true
-use_merchant_dict = true
+invert_sign = "true"
+use_merchant_dict = "true"
 
 [[importers]]
 name = "bnp-csv"
@@ -100,7 +100,7 @@ debit_column = "Débit"
 credit_column = "Crédit"
 amount_locale = "fr_FR"
 delimiter = ";"
-use_merchant_dict = true
+use_merchant_dict = "true"
 
 [[importers]]
 name = "generic-euro-csv"
@@ -114,7 +114,7 @@ payee_column = "Payee"
 amount_column = "Amount"
 amount_locale = "en_US"
 delimiter = ","
-use_merchant_dict = true
+use_merchant_dict = "true"
 
 [[importers]]
 name = "generic-usd-csv"
@@ -128,7 +128,7 @@ payee_column = "Payee"
 amount_column = "Amount"
 amount_locale = "en_US"
 delimiter = ","
-use_merchant_dict = true
+use_merchant_dict = "true"
 
 [[importers]]
 name = "credit-mutuel-ofx"
