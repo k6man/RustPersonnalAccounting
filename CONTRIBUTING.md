@@ -9,10 +9,10 @@ recette, jamais éditées par des outils).
 
 ## Avant de coder
 
-- **Comprendre l'état du projet** : lisez d'abord `TODO.md` (journal, état
-  courant, écarts). Les décisions d'architecture sont dans `docs/` (ADR).
+- **Comprendre l'état du projet** : lisez d'abord `AGENTS.md`, puis `openspec/`
+  (specs et changes en cours). Les décisions d'architecture sont dans `docs/` (ADR).
 - **Ne pas inventer** : si une API, un flag ou une dépendance n'est pas
-  documentée, lisez le code / le Cargo.lock / `TODO.md` — ne la fictions pas.
+  documentée, lisez le code / le Cargo.lock / `docs/rustledger-0.24.md` — ne la fictions pas.
 
 ## Commande de validation (obligatoires avant chaque commit)
 

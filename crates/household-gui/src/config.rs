@@ -1,4 +1,4 @@
-//! Préférences GUI persistées **hors ledger** (TODO.md Q6) : un fichier TOML
+//! Préférences GUI persistées **hors ledger** (docs/ADR-005, décision 5) : un fichier TOML
 //! local — `~/.config/rust-personal-accounting.toml` — ne contient que des
 //! réglages applicatifs (chemin du vrai ledger, rollover par famille…).
 //! Le ledger reste la seule source de vérité des données.

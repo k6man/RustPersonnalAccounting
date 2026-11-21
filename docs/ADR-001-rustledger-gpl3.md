@@ -27,7 +27,7 @@ pre-commit, CI).
 - Pas d'usage de `f64` sur les montants : les types du moteur (Decimal) sont
   propagés de bout en bout.
 - Les écarts d'API entre le dépôt `main` de rustledger et la version publiée
-  sont documentés au fil des jalons (TODO.md — « Reconnaissance ») : la
+  sont documentés dans `docs/rustledger-0.24.md` : la
   source de vérité est la documentation des sources publiées.
 - le hook pre-commit appelle `rledger check` ; la CI l'exécute aussi
   (`cargo binstall rustledger`).

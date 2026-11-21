@@ -1,3 +1,6 @@
+> **Archive** : prompt de démarrage du projet, conservé pour mémoire. Le `TODO.md` qu'il demande de créer
+> a été remplacé par OpenSpec (`openspec/`) : ne pas le recréer.
+
 # Mission
 
 Tu es un ingénieur Rust senior. Mets en place **de bout en bout** un système de comptabilité personnelle de foyer basé sur **Beancount**, en utilisant **rustledger** (implémentation Rust de Beancount, https://github.com/rustledger/rustledger) comme moteur de parsing, validation et requêtes. Le tout est versionné avec **git**, et accompagné d'une **application GUI en Rust avec egui/eframe**.

@@ -1,4 +1,10 @@
-## ADDED Requirements
+# importer-releve Specification
+
+## Purpose
+
+TBD - created by archiving change importer-releve. Update Purpose after archive.
+
+## Requirements
 
 ### Requirement: Import de relevé
 Le système SHALL transformer un relevé CSV ou OFX en brouillons de transactions proposés à

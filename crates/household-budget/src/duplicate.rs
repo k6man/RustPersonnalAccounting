@@ -2,7 +2,7 @@
 //!
 //! Recopie les directives `custom "budget"` de l'année source vers l'année
 //! cible (la supersession étant datée, la recopie est une opération d'édition
-//! — cf. TODO.md Q4), avec :
+//! — cf. docs/ADR-005, décision 4), avec :
 //! - ajustement optionnel en pour cent (peut être négatif) ;
 //! - arrondi **au multiple supérieur** d'un pas « rond » paramétrable
 //!   (`0.01` = centimes exacts, `1.00` = euros entiers, `5.00` = multiple

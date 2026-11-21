@@ -1,11 +1,13 @@
 # AGENTS.md — instructions pour agents (OpenCode, etc.)
 
-Point d'entrée « reprise à froid » : **`TODO.md`** (état des jalons, décisions, écarts d'API
-trouvés en chemin). Décisions d'architecture : `docs/ADR-00*.md`. **Lisez TODO.md avant
-toute modification** — l'état courant et la prochaine action y sont toujours à jour.
+Point d'entrée « reprise à froid » : **ce fichier**, puis `openspec/project.md` (contexte, carte des
+capabilities) et `openspec list` (changes ouverts et avancement de leurs `tasks.md`). Décisions
+d'architecture : `docs/ADR-00*.md` ; notes techniques sur rustledger : `docs/rustledger-0.24.md`.
+Il n'y a plus de `TODO.md` : son dernier état reste dans l'historique git
+(`git log --diff-filter=D -- TODO.md`, puis `git show <hash>^:TODO.md`).
 Comportements attendus du logiciel : **`openspec/`** (specs par parcours utilisateur et
 changes en cours) — voir la section « OpenSpec » plus bas. Ordre de reprise à froid :
-`TODO.md`, puis `openspec list` (changes ouverts), puis la spec de la capability concernée.
+`openspec list` (changes ouverts), puis la spec de la capability concernée.
 
 ## Commandes de validation (toutes obligatoires avant chaque commit)
 
@@ -24,9 +26,9 @@ openspec validate --all --strict   # specs et changes valides (contrôle de form
 
 ## OpenSpec — comportements attendus et changes
 
-Deux sources complémentaires, **à ne pas dupliquer** : `TODO.md` = état des jalons et prochaine
-action ; `openspec/` = **ce que le logiciel doit faire** (specs) et les évolutions en cours (changes).
-Un jalon de `TODO.md` qui implémente un change cite son identifiant.
+L'état d'avancement vit dans les `tasks.md` cochés de `openspec/changes/<id>/` (il remplace l'ancien
+`TODO.md`) ; `openspec/specs/` dit **ce que le logiciel doit faire** ; l'historique est dans `git log` ;
+les décisions d'architecture sont dans `docs/`. **Ne recréez pas de fichier de suivi parallèle.**
 
 - `openspec/project.md` : contexte, conventions, carte parcours → capability → crate.
 - `openspec/specs/<capability>/spec.md` : 10 capabilities **par parcours utilisateur** — ouvrir-ledger,
@@ -52,13 +54,12 @@ de dépendance sans effet de comportement. **En cas de doute, ouvrez un change.*
 
 ### Workflow
 
-1. Lire `TODO.md`, puis `openspec list` et `openspec list --specs` ; `openspec show <capability>` pour une spec.
+1. `openspec list` et `openspec list --specs` ; `openspec show <capability>` pour une spec.
 2. Proposer : créer `openspec/changes/<id>/` (`<id>` en kebab-case, descriptif) avec `proposal.md`,
    `tasks.md` et les deltas de specs. **S'arrêter et demander la relecture humaine : ne pas coder
    tant que le change n'est pas approuvé.**
 3. Implémenter les tâches de `tasks.md` dans l'ordre, les cocher au fur et à mesure, `just check` à chaque étape.
-4. `openspec validate <id> --strict`.
-5. Archiver : `openspec archive <id>` (fusionne les deltas dans `specs/`), puis
+4. Archiver : `openspec archive <id>` (fusionne les deltas dans `specs/`), puis
    `openspec validate --all --strict`.
 
 ### Format des specs (le validateur est strict)
@@ -121,7 +122,7 @@ de dépendance sans effet de comportement. **En cas de doute, ouvrez un change.*
   (ex. `BookingEngine::apply`, `Open.meta` = `Metadata` FxHashMap, `Commit::summary()`
   → `Result<Option>` côté git2). En cas de doute, lisez les sources dans
   `~/.cargo/registry/src/…/rustledger-*-0.24.0/`, pas la doc du dépôt. Écarts
-  documentés dans TODO.md ; ne `cargo update` pas sans lecture du CHANGELOG.
+  documentés dans `docs/rustledger-0.24.md` ; ne `cargo update` pas sans lecture du CHANGELOG.
 
 ## Architecture (ce que les noms de fichiers ne disent pas)
 
@@ -153,7 +154,7 @@ de dépendance sans effet de comportement. **En cas de doute, ouvrez un change.*
   `~/.config/rust-personal-accounting.toml` (migré depuis `compta-foyer.toml`,
   v0.1), **jamais dans le ledger**.
 
-## Pièges ratatui 0.26 / crossterm 0.27 (détails dans TODO.md)
+## Pièges ratatui 0.26 / crossterm 0.27
 
 - **`KeyEventKind::Press` filtré** dans `App::run` : sans filtre, les
   terminaux/OS qui émettent Press+Release traitent chaque touche deux fois.
@@ -181,12 +182,12 @@ de dépendance sans effet de comportement. **En cas de doute, ouvrez un change.*
 
 ## Git
 
-- Branche de travail : `develop` (le jalon courant est committé là avec TODO.md à jour
-  dans le même commit). Tag `v0.1.0` existe ; push non encore effectué.
+- Branche de travail : `develop` (le travail courant est committé là, specs et
+  `tasks.md` à jour dans le même commit). Tag `v0.1.0` existe ; push non encore effectué.
 - Un change : proposal, tasks et deltas de specs committés **avant** le code ; `openspec archive`
-  dans le dernier commit du change, avec `TODO.md` à jour. Message : `Change <id> — <titre>`.
+  dans le dernier commit du change, avec ses `tasks.md` cochés. Message : `Change <id> — <titre>`.
 - Message type pour le ledger : `ledger: AAAA-MM — saisie/édition (N fichiers)`
-  (`household_git::suggere_message`). Commits de jalon : `Jalon N — <titre>`.
+  (`household_git::suggere_message`).
 
 ## Licence
 

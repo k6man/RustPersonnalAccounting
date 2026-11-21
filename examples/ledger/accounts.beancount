@@ -7,7 +7,7 @@
 2024-01-01 open Assets:Banque:CompteCourant
 
 # Plafonds réglementaires en métadonnées : lues par la GUI pour les jauges
-# d'alerte (approche/dépassement). Convention `ceiling:` documentée dans TODO.md.
+# d'alerte (approche/dépassement). Convention `ceiling:` documentée dans docs/ADR-005.
 2024-01-01 open Assets:Epargne:LivretA
   ceiling: 22950.00 EUR
 2024-01-01 open Assets:Epargne:LDD

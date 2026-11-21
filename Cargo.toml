@@ -21,7 +21,7 @@ all = { level = "warn", priority = -1 }
 
 [workspace.dependencies]
 # Moteur beancount — épinglé exactement : l'API interne évolue vite
-# (cf. TODO.md « Questions ouvertes » #8 ; cargo update sauf après lecture du CHANGELOG).
+# (cf. docs/ADR-001 et docs/rustledger-0.24.md ; cargo update sauf après lecture du CHANGELOG).
 rustledger-core = "=0.24.0"
 rustledger-parser = "=0.24.0"
 rustledger-loader = "=0.24.0"

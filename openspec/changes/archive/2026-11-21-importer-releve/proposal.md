@@ -1,7 +1,7 @@
 # Importer un relevé bancaire (CSV/OFX)
 
 ## Pourquoi
-Idée « hors périmètre v1 » de TODO.md : éviter la saisie manuelle des relevés. rustledger fournit
+Idée « hors périmètre v1 » (cf. docs/idees-hors-perimetre.md) : éviter la saisie manuelle des relevés. rustledger fournit
 `rledger extract` et `importers.toml`.
 
 ## Ce qui change

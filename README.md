@@ -3,9 +3,11 @@
 Comptabilité personnelle de foyer (couple + 2 enfants, EUR) fondée sur **Beancount**,
 moteur **rustledger** (implémentation Rust), suivi **git** natif, et une TUI **ratatui/crossterm**.
 
-> **Suivi du projet** : voir [`TODO.md`](TODO.md) — état courant, jalons, décisions.
-> C'est le point d'entrée pour reprendre le travail à froid.
-> Les décisions d'architecture sont consignées dans [`docs/`](docs/) (ADR).
+> **Suivi du projet** : les comportements attendus sont spécifiés dans [`openspec/`](openspec/)
+> (specs par parcours utilisateur, changes en cours avec leurs `tasks.md`) ; l'historique est dans
+> `git log`. Pour reprendre le travail à froid : [`AGENTS.md`](AGENTS.md), puis `openspec list`.
+> Les décisions d'architecture sont consignées dans [`docs/`](docs/) (ADR), les notes techniques sur
+> rustledger dans [`docs/rustledger-0.24.md`](docs/rustledger-0.24.md).
 
 ## État
 
