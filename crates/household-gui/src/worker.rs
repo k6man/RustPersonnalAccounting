@@ -6,7 +6,8 @@
 //! - UI / watcher → `Sender<Command>` ; worker → `Receiver<LoadOutcome>` ;
 //! - un seul worker : les commandes (rechargements et écritures) sont
 //!   sérialisées, le debounce écrête les rafales du watcher ;
-//! - le worker appelle `ctx.request_repaint()` à l'envoi de chaque résultat.
+//! - la boucle UI (ratatui) redessine à chaque itération : le worker n'a pas
+//!   besoin de demander un repaint explicite.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;

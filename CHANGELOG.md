@@ -15,7 +15,7 @@ mises à jour des dépendances.
 - **Versionnement + git** : `household-core` (wrapper rustledger, load/snapshot/
   resolution/writers atomiques), `household-budget` (grille, rollover,
   duplication d'année), `household-git` (git2 statut/commit/historique),
-  `household-gui` (eframe/egui vue applicatif + worker + vues).
+  `household-gui` (ratatui/crossterm vue applicatif + worker + vues).
 - **Ledger** : `examples/ledger/main.beancount` + budgets (Fava `custom
   budget`), validation par `rledger check` en CI.
 - **GUI** : tableau de bord (soldes, plafonds à 3 états, patrimoine, budget),

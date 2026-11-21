@@ -1132,7 +1132,8 @@ crates ~/.cargo/registry/…-0.24.0 ; à revoir si épinglage un jour déplacé)
 10. **eframe 0.37 a changé le trait `App`** — *découverte au jalon 1* : `update(ctx, frame)` →
    `logic(ctx, frame)` + `ui(&mut self, ui: &mut egui::Ui, frame)` (un `Ui` monté est remis ;
    plus de `CentralPanel` obligatoire fondé sur `ctx`). Squelette adapté ; l'architecture du jalon 4
-   s'appuiera sur `logic` pour les commandes et `ui` pour les vues.
+   s'appuiera sur `logic` pour les commandes et `ui` pour les vues. **OBSOLÈTE** : migration vers
+   ratatui/crossterm effectuée (TUI plein écran), eframe/egui retirés.
 11. **chmod local refusé par la sandbox d'exécution** — le bit exécutable du hook est correct dans
    git (mode 100755, mode conservé partout) mais pas sur la copie de travail de l'environnement
    d'agent ; `just setup` (chmod +x + hooksPath) le règle à la première exécution humaine. Sans effet
@@ -1167,69 +1168,69 @@ crates ~/.cargo/registry/…-0.24.0 ; à revoir si épinglage un jour déplacé)
 
 ### Phase 0 — Préparation (référence)
 
-- [ ] Vérifier que `viewmodel.rs` et `worker.rs` ne dépendent pas d'egui (déjà le cas)
-- [ ] Épingler ratatui/crossterm dans `Cargo.toml` workspace
-- [ ] `just check` vert en l'état (référence avant migration)
+- [x] Vérifier que `viewmodel.rs` et `worker.rs` ne dépendent pas d'egui (déjà le cas)
+- [x] Épingler ratatui/crossterm dans `Cargo.toml` workspace
+- [x] `just check` vert en l'état (référence avant migration)
 
 ### Phase 1 — Squelette ratatui
 
-- [ ] Remplacer eframe par crossterm + ratatui dans `main.rs`/`lib.rs`
-- [ ] Boucle d'événements : `poll` crossterm → traduction en `Command` vers le worker → rendu ratatui
-- [ ] Écran placeholder (texte statique) pour valider la boucle
-- [ ] `just check` vert
+- [x] Remplacer eframe par crossterm + ratatui dans `main.rs`/`lib.rs`
+- [x] Boucle d'événements : `poll` crossterm → traduction en `Command` vers le worker → rendu ratatui
+- [x] Écran placeholder (texte statique) pour valider la boucle
+- [x] `just check` vert
 
 ### Phase 2 — Barre d'en-tête + sélecteur d'écrans
 
-- [ ] Badge `LEDGER D'EXEMPLE — données fictives` + chemin + source de résolution
-- [ ] Sélecteur d'écran actif (`Tabs` ou liste) avec raccourcis `Ctrl+1..7`
-- [ ] Flash messages (succès vert / erreur rouge, clic = acquittement)
+- [x] Badge `LEDGER D'EXEMPLE — données fictives` + chemin + source de résolution
+- [x] Sélecteur d'écran actif (`Tabs` ou liste) avec raccourcis `Ctrl+1..7`
+- [x] Flash messages (succès vert / erreur rouge, clic = acquittement)
 
 ### Phase 3 — Tableau de bord
 
-- [ ] Soldes CC/LivretA/LDD + jauges de plafond (3 états : normal / alerte / dépassement)
-- [ ] Patrimoine net (Σ Assets − Σ Liabilities, Equity exclu)
-- [ ] Budget vs réel du mois courant (8 postes les plus tendus)
-- [ ] Courbe du patrimoine → `BarChart` ou sparkline texte (pas de `egui_plot`)
+- [x] Soldes CC/LivretA/LDD + jauges de plafond (3 états : normal / alerte / dépassement)
+- [x] Patrimoine net (Σ Assets − Σ Liabilities, Equity exclu)
+- [x] Budget vs réel du mois courant (8 postes les plus tendus)
+- [x] Courbe du patrimoine → `BarChart` ou sparkline texte (pas de `egui_plot`)
 
 ### Phase 4 — Journal
 
-- [ ] `Table` ratatui avec pagination 100/page
-- [ ] Filtres texte / compte-préfixe / tag / dates / montants (parsing tolérant)
-- [ ] Détail transaction (postings, tags/liens, origine fichier:ligne:entrée)
-- [ ] Sélection → modification / suppression (relocalisation par empreinte)
+- [x] `Table` ratatui avec pagination 100/page
+- [x] Filtres texte / compte-préfixe / tag / dates / montants (parsing tolérant)
+- [x] Détail transaction (postings, tags/liens, origine fichier:ligne:entrée)
+- [x] Sélection → modification / suppression (relocalisation par empreinte)
 
 ### Phase 5 — Saisie
 
-- [ ] Postings dynamiques (+/×), ligne d'équilibrage explicite
-- [ ] Validation de forme (équilibre par devise, deux niveaux)
-- [ ] Autocomplétion comptes (ouverts à la date) et tiers (fréquence)
-- [ ] Intégration worker `Command::Ecrire` / `Modifier` / `Supprimer`
+- [x] Postings dynamiques (+/×), ligne d'équilibrage explicite
+- [x] Validation de forme (équilibre par devise, deux niveaux)
+- [x] Autocomplétion comptes (ouverts à la date) et tiers (fréquence)
+- [x] Intégration worker `Command::Ecrire` / `Modifier` / `Supprimer`
 
 ### Phase 6 — Budget
 
-- [ ] Grille postes × 12 mois avec arbre hiérarchique repliable (groupes synthétisés)
-- [ ] Cellules éditables + diff de confirmation (supersession expliquée)
-- [ ] Duplication d'année N+1 (pour cent ±, pas d'arrondi)
-- [ ] Rollover par famille (disponible cumulé, persistance TOML locale)
+- [x] Grille postes × 12 mois avec arbre hiérarchique repliable (groupes synthétisés)
+- [x] Cellules éditables + diff de confirmation (supersession expliquée)
+- [x] Duplication d'année N+1 (pour cent ±, pas d'arrondi)
+- [x] Rollover par famille (disponible cumulé, persistance TOML locale)
 
 ### Phase 7 — Rapports + Graphiques
 
-- [ ] Heatmap catégories × mois (intensité relative)
-- [ ] Barres N vs N−1, revenus, variation nette d'épargne, taux d'épargne
-- [ ] Répartition dépenses (top 8 + « Autres »), cascade annuelle (identité comptable)
-- [ ] Budget vs réel du mois (2 `BarChart` groupés)
+- [x] Heatmap catégories × mois (intensité relative)
+- [x] Barres N vs N−1, revenus, variation nette d'épargne, taux d'épargne
+- [x] Répartition dépenses (top 8 + « Autres »), cascade annuelle (identité comptable)
+- [x] Budget vs réel du mois (2 `BarChart` groupés)
 
 ### Phase 8 — Git
 
-- [ ] Statut par fichier (tableau), résumé du diff (fichiers/insertions/suppressions)
-- [ ] Message de commit prérempli (`ledger: AAAA-MM — saisie/édition`)
-- [ ] Commit avec validation du ledger préalable côté app (ADR-002)
+- [x] Statut par fichier (tableau), résumé du diff (fichiers/insertions/suppressions)
+- [x] Message de commit prérempli (`ledger: AAAA-MM — saisie/édition`)
+- [x] Commit avec validation du ledger préalable côté app (ADR-002)
 
 ### Phase 9 — Polish et tests
 
-- [ ] Tests d'intégration GUI (headless, vues testables sans affichage réel)
-- [ ] `just check` vert (fmt + clippy `-D warnings` + tests workspace + `rledger check`)
-- [ ] Gestion d'erreurs homogène (flash/bannière, jamais d'écran de mort)
+- [x] Tests d'intégration GUI (headless, vues testables sans affichage réel)
+- [x] `just check` vert (fmt + clippy `-D warnings` + tests workspace + `rledger check`)
+- [x] Gestion d'erreurs homogène (flash/bannière, jamais d'écran de mort)
 
 ### Risques et atténuation
 

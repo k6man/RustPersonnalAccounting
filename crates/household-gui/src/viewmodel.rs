@@ -47,7 +47,7 @@ pub struct UiData {
 
 /// Données de l'écran **Rapports**, calculées une fois par chargement :
 /// agrégats par mois dans l'année, en `Decimal` (conversion `f64` réservée
-/// au tracé egui_plot, jamais stockée).
+/// au tracé graphique, jamais stockée).
 #[derive(Debug, Clone, Default)]
 pub struct RapportsData {
     /// Année affichée (l'année courante).

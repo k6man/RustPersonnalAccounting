@@ -1,6 +1,6 @@
 [package]
 name = "household-gui"
-description = "Application de comptabilité du foyer (eframe/egui)"
+description = "Application de comptabilité du foyer (ratatui/crossterm)"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

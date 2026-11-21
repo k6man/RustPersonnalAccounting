@@ -452,13 +452,13 @@ pub fn afficher(
 
 /// Gère un événement clavier pour le budget. `commentaires` est la map
 /// compte → note de l'année affichée (pré-remplissage de l'éditeur).
+/// `rollover_actif` indique si le rollover est actif pour une famille (affichage futur).
 pub fn on_key(
     key: KeyEvent,
     etat: &mut UiState,
     grille: Option<&BudgetGrid>,
     commentaires: &BTreeMap<String, String>,
-    _config: &dyn Fn(&str) -> bool,
-    _cmd_tx: &std::sync::mpsc::Sender<crate::worker::Command>,
+    _rollover_actif: &dyn Fn(&str) -> bool,
 ) -> Option<ActionBudget> {
     use crossterm::event::KeyCode;
 

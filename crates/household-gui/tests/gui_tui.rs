@@ -6,7 +6,6 @@
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
-use std::sync::mpsc::channel;
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use household_git::{CommitInfo, EtatFichier, FichierStatut, ResumeDiff};
@@ -244,12 +243,13 @@ fn journal_deplace_selection_et_actions() {
     let donnees = donnees_test();
     let mut etat = journal::UiState::new();
     etat.set_selection(0);
+    let lignes_filtrees: Vec<_> = donnees.journal.lignes.iter().collect();
 
     // Flèche bas déplace la sélection.
     let action = journal::on_key(
         key(KeyCode::Down, KeyModifiers::NONE),
         &mut etat,
-        donnees.journal.lignes.len(),
+        &lignes_filtrees,
     );
     assert!(action.is_none());
     assert_eq!(etat.selection, Some(1));
@@ -258,7 +258,7 @@ fn journal_deplace_selection_et_actions() {
     let action = journal::on_key(
         key(KeyCode::Enter, KeyModifiers::NONE),
         &mut etat,
-        donnees.journal.lignes.len(),
+        &lignes_filtrees,
     );
     assert!(
         matches!(action, Some(journal::ActionJournal::Modifier(1))),
@@ -269,7 +269,7 @@ fn journal_deplace_selection_et_actions() {
     let action = journal::on_key(
         key(KeyCode::Up, KeyModifiers::NONE),
         &mut etat,
-        donnees.journal.lignes.len(),
+        &lignes_filtrees,
     );
     assert!(action.is_none());
     assert_eq!(etat.selection, Some(0));
@@ -279,7 +279,8 @@ fn journal_deplace_selection_et_actions() {
 fn journal_molette_deplace_la_selection() {
     let donnees = donnees_test();
     let mut etat = journal::UiState::new();
-    let nb = donnees.journal.lignes.len();
+    let lignes_filtrees: Vec<_> = donnees.journal.lignes.iter().collect();
+    let nb = lignes_filtrees.len();
 
     // Pas de sélection explicite : la molette vers le bas sélectionne 1.
     etat.descendre(nb);
@@ -303,11 +304,12 @@ fn journal_supprime_selection() {
     let donnees = donnees_test();
     let mut etat = journal::UiState::new();
     etat.set_selection(0);
+    let lignes_filtrees: Vec<_> = donnees.journal.lignes.iter().collect();
 
     let action = journal::on_key(
         key(KeyCode::Delete, KeyModifiers::NONE),
         &mut etat,
-        donnees.journal.lignes.len(),
+        &lignes_filtrees,
     );
     assert!(
         matches!(action, Some(journal::ActionJournal::Supprimer(0))),
@@ -344,19 +346,25 @@ fn journal_zones_lignes_apres_en_tete() {
         journal::afficher(frame, area, &donnees.journal, &mut etat, &mut zones);
     });
 
-    // Deux transactions affichées → deux zones.
-    assert_eq!(zones.len(), 2, "une zone par ligne affichée : {zones:?}");
-    // La première rangée de données est 6 lignes sous le haut de l'area :
-    // panneau info (3) + bordure (1) + en-tête (1) + marge d'en-tête (1).
-    assert_eq!(zones[0].0.y, area.y + 6, "zone à cheval sur l'en-tête");
-    assert_eq!(zones[0].0.y + 1, zones[1].0.y, "zones contiguës");
+    // 7 champs de filtre + 2 lignes de transactions = 9 zones.
+    assert_eq!(zones.len(), 9, "7 filtres + 2 lignes : {zones:?}");
+
+    // Les 7 premières zones sont les champs de filtre (ligne y=0, hauteur 5).
+    for (i, zone) in zones.iter().take(7).enumerate() {
+        assert_eq!(zone.0.y, area.y, "filtre {i} sur la première ligne");
+        assert_eq!(zone.0.height, 5, "hauteur du panneau filtre");
+    }
+
+    // Les zones de lignes commencent après : filtres (5) + info (3) + bordure tableau (1) + en-tête (1) + marge (1) = 11.
+    assert_eq!(zones[7].0.y, area.y + 11, "première ligne de transaction");
+    assert_eq!(zones[7].0.y + 1, zones[8].0.y, "zones de lignes contiguës");
     // Les zones portent les index de transaction, pas les positions.
     assert_eq!(
-        zones[0].1,
+        zones[7].1,
         household_gui::app::ActionClique::JournalLigne(0)
     );
     assert_eq!(
-        zones[1].1,
+        zones[8].1,
         household_gui::app::ActionClique::JournalLigne(1)
     );
 }
@@ -1330,14 +1338,12 @@ fn budget_action_edition_cellule_retourne_none_si_grille_vide() {
     let mut etat = budget::UiState::nouveau(2026);
 
     let grille = Some(&donnees.grilles[&2026]);
-    let (_cmd_tx, _cmd_rx) = channel::<household_gui::worker::Command>();
     let action = budget::on_key(
         key(KeyCode::Char('e'), KeyModifiers::NONE),
         &mut etat,
         grille,
         &commentaires_vide(),
         &|_| false,
-        &_cmd_tx,
     );
     // Avec une grille vide, on_key retourne None (pas de ligne).
     assert!(action.is_none());
@@ -1371,15 +1377,12 @@ fn grille_essai() -> BudgetGrid {
 fn budget_e_ouvre_l_edition_pre_remplie_sans_ecrire() {
     let grille = grille_essai();
     let mut etat = budget::UiState::nouveau(2026);
-    let (_cmd_tx, _cmd_rx) = channel::<household_gui::worker::Command>();
-
     let action = budget::on_key(
         key(KeyCode::Char('e'), KeyModifiers::NONE),
         &mut etat,
         Some(&grille),
         &commentaires_vide(),
         &|_| false,
-        &_cmd_tx,
     );
 
     // Régression : 'e' n'écrit rien tout seul (l'ancien comportement
@@ -1396,15 +1399,12 @@ fn budget_e_ouvre_l_edition_pre_remplie_sans_ecrire() {
 fn budget_edition_entree_valide_avec_montant_saisi() {
     let grille = grille_essai();
     let mut etat = budget::UiState::nouveau(2026);
-    let (_cmd_tx, _cmd_rx) = channel::<household_gui::worker::Command>();
-
     let action = budget::on_key(
         key(KeyCode::Char('e'), KeyModifiers::NONE),
         &mut etat,
         Some(&grille),
         &commentaires_vide(),
         &|_| false,
-        &_cmd_tx,
     );
     assert!(action.is_none());
 
@@ -1416,7 +1416,6 @@ fn budget_edition_entree_valide_avec_montant_saisi() {
         Some(&grille),
         &commentaires_vide(),
         &|_| false,
-        &_cmd_tx,
     );
 
     let Some(budget::ActionBudget::Cellule {
@@ -1439,15 +1438,12 @@ fn budget_edition_entree_valide_avec_montant_saisi() {
 fn budget_edition_esc_annule_sans_ecrire() {
     let grille = grille_essai();
     let mut etat = budget::UiState::nouveau(2026);
-    let (_cmd_tx, _cmd_rx) = channel::<household_gui::worker::Command>();
-
     budget::on_key(
         key(KeyCode::Char('e'), KeyModifiers::NONE),
         &mut etat,
         Some(&grille),
         &commentaires_vide(),
         &|_| false,
-        &_cmd_tx,
     );
     etat.edition.as_mut().unwrap().input.value = "42".to_string();
 
@@ -1457,7 +1453,6 @@ fn budget_edition_esc_annule_sans_ecrire() {
         Some(&grille),
         &commentaires_vide(),
         &|_| false,
-        &_cmd_tx,
     );
 
     assert!(action.is_none(), "Esc ne produit aucune écriture");
@@ -1468,15 +1463,12 @@ fn budget_edition_esc_annule_sans_ecrire() {
 fn budget_edition_montant_invalide_garde_ouverte() {
     let grille = grille_essai();
     let mut etat = budget::UiState::nouveau(2026);
-    let (_cmd_tx, _cmd_rx) = channel::<household_gui::worker::Command>();
-
     budget::on_key(
         key(KeyCode::Char('e'), KeyModifiers::NONE),
         &mut etat,
         Some(&grille),
         &commentaires_vide(),
         &|_| false,
-        &_cmd_tx,
     );
     etat.edition.as_mut().unwrap().input.value = "abc".to_string();
 
@@ -1486,7 +1478,6 @@ fn budget_edition_montant_invalide_garde_ouverte() {
         Some(&grille),
         &commentaires_vide(),
         &|_| false,
-        &_cmd_tx,
     );
 
     assert!(action.is_none(), "montant invalide : aucune écriture");
@@ -1500,15 +1491,12 @@ fn budget_edition_montant_invalide_garde_ouverte() {
 fn budget_edition_consomme_les_lettres_comme_du_texte() {
     let grille = grille_essai();
     let mut etat = budget::UiState::nouveau(2026);
-    let (_cmd_tx, _cmd_rx) = channel::<household_gui::worker::Command>();
-
     budget::on_key(
         key(KeyCode::Char('e'), KeyModifiers::NONE),
         &mut etat,
         Some(&grille),
         &commentaires_vide(),
         &|_| false,
-        &_cmd_tx,
     );
 
     // Pendant l'édition, r/l/x… sont du texte de montant, pas des commandes.
@@ -1518,7 +1506,6 @@ fn budget_edition_consomme_les_lettres_comme_du_texte() {
         Some(&grille),
         &commentaires_vide(),
         &|_| false,
-        &_cmd_tx,
     );
     assert!(action.is_none());
     assert_eq!(
@@ -1532,15 +1519,12 @@ fn budget_edition_consomme_les_lettres_comme_du_texte() {
 fn budget_rendu_en_edition_ne_panique_pas() {
     let grille = grille_essai();
     let mut etat = budget::UiState::nouveau(2026);
-    let (_cmd_tx, _cmd_rx) = channel::<household_gui::worker::Command>();
-
     budget::on_key(
         key(KeyCode::Char('e'), KeyModifiers::NONE),
         &mut etat,
         Some(&grille),
         &commentaires_vide(),
         &|_| false,
-        &_cmd_tx,
     );
 
     render_safe(buffer_rect(), |frame| {
@@ -1564,7 +1548,6 @@ fn budget_c_ouvre_le_commentaire_pre_rempli_du_ledger() {
     // pré-rempli avec la note lue, sans écrire.
     let grille = grille_essai();
     let mut etat = budget::UiState::nouveau(2026);
-    let (_cmd_tx, _cmd_rx) = channel::<household_gui::worker::Command>();
     let commentaires = BTreeMap::from([(
         "Expenses:Alimentation:Courses".to_string(),
         "Courses hebdo du foyer".to_string(),
@@ -1576,7 +1559,6 @@ fn budget_c_ouvre_le_commentaire_pre_rempli_du_ledger() {
         Some(&grille),
         &commentaires,
         &|_| false,
-        &_cmd_tx,
     );
 
     assert!(action.is_none(), "'c' doit seulement ouvrir l'éditeur");
@@ -1596,7 +1578,6 @@ fn budget_c_ouvre_le_commentaire_pre_rempli_du_ledger() {
 fn budget_commentaire_esc_annule_et_entree_produit_l_action() {
     let grille = grille_essai();
     let mut etat = budget::UiState::nouveau(2026);
-    let (_cmd_tx, _cmd_rx) = channel::<household_gui::worker::Command>();
     let commentaires = commentaires_vide();
 
     budget::on_key(
@@ -1605,7 +1586,6 @@ fn budget_commentaire_esc_annule_et_entree_produit_l_action() {
         Some(&grille),
         &commentaires,
         &|_| false,
-        &_cmd_tx,
     );
     etat.edition_commentaire.as_mut().unwrap().input.value = "  ;  note du foyer ".to_string();
 
@@ -1616,7 +1596,6 @@ fn budget_commentaire_esc_annule_et_entree_produit_l_action() {
         Some(&grille),
         &commentaires,
         &|_| false,
-        &_cmd_tx,
     );
     assert!(action.is_none(), "Esc annule sans écrire");
     assert!(etat.edition_commentaire.is_none());
@@ -1628,7 +1607,6 @@ fn budget_commentaire_esc_annule_et_entree_produit_l_action() {
         Some(&grille),
         &commentaires,
         &|_| false,
-        &_cmd_tx,
     );
     etat.edition_commentaire.as_mut().unwrap().input.value = "note du foyer".to_string();
     let action = budget::on_key(
@@ -1637,7 +1615,6 @@ fn budget_commentaire_esc_annule_et_entree_produit_l_action() {
         Some(&grille),
         &commentaires,
         &|_| false,
-        &_cmd_tx,
     );
     let Some(budget::ActionBudget::Commentaire {
         annee,
@@ -1663,7 +1640,6 @@ fn budget_commentaire_esc_annule_et_entree_produit_l_action() {
         Some(&grille),
         &commentaires,
         &|_| false,
-        &_cmd_tx,
     );
     etat.edition_commentaire.as_mut().unwrap().input.value = "   ".to_string();
     let action = budget::on_key(
@@ -1672,7 +1648,6 @@ fn budget_commentaire_esc_annule_et_entree_produit_l_action() {
         Some(&grille),
         &commentaires,
         &|_| false,
-        &_cmd_tx,
     );
     assert_eq!(
         action,
@@ -1691,7 +1666,6 @@ fn budget_commentaire_consomme_les_lettres_comme_du_texte() {
     // commentaire, ces lettres sont du texte, pas des commandes globales.
     let grille = grille_essai();
     let mut etat = budget::UiState::nouveau(2026);
-    let (_cmd_tx, _cmd_rx) = channel::<household_gui::worker::Command>();
     let commentaires = commentaires_vide();
 
     budget::on_key(
@@ -1700,7 +1674,6 @@ fn budget_commentaire_consomme_les_lettres_comme_du_texte() {
         Some(&grille),
         &commentaires,
         &|_| false,
-        &_cmd_tx,
     );
     let action = budget::on_key(
         key(KeyCode::Char('r'), KeyModifiers::NONE),
@@ -1708,7 +1681,6 @@ fn budget_commentaire_consomme_les_lettres_comme_du_texte() {
         Some(&grille),
         &commentaires,
         &|_| false,
-        &_cmd_tx,
     );
     assert!(action.is_none());
     assert_eq!(
@@ -1764,14 +1736,12 @@ fn budget_bande_de_commentaire_rendue_sous_la_grille() {
     assert!(texte.contains("c : éditer"), "l'affordance est affichée");
 
     // En édition, le champ et son affordance prennent la bande.
-    let (_cmd_tx, _cmd_rx) = channel::<household_gui::worker::Command>();
     budget::on_key(
         key(KeyCode::Char('c'), KeyModifiers::NONE),
         &mut etat,
         Some(&grille),
         &commentaires,
         &|_| false,
-        &_cmd_tx,
     );
     let texte = rendu(&mut etat);
     assert!(

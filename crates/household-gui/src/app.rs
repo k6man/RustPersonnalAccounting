@@ -132,6 +132,8 @@ pub enum ActionClique {
     ChangerOnglet(usize),
     /// Sélectionner une ligne du journal (index dans donnees.journal.lignes).
     JournalLigne(usize),
+    /// Activer l'édition d'un champ de filtre du journal.
+    JournalFiltre(crate::views::journal::ChampFiltre),
     /// Sélectionner une ligne de postings dans la saisie.
     SaisieSelection(usize),
     /// Sélectionner une ligne de la grille budgétaire.
@@ -142,6 +144,10 @@ pub enum ActionClique {
     GitCommit(String),
     /// Recharger le statut git.
     GitRefresh,
+    /// Panneau Ledger : choisir un fichier main.beancount.
+    LedgerChoisir,
+    /// Panneau Ledger : utiliser le ledger d'exemple (efface la config).
+    LedgerUtiliserExemple,
     /// Aucune action.
     Aucun,
 }
@@ -465,14 +471,9 @@ impl App {
                     .as_ref()
                     .and_then(|d| d.commentaires_budget.get(&self.budget.annee))
                     .unwrap_or(&vide);
-                let action = budget::on_key(
-                    key,
-                    &mut self.budget,
-                    grille,
-                    map,
-                    &|famille| self.config.rollover_actif(famille),
-                    &self.cmd_tx,
-                );
+                let action = budget::on_key(key, &mut self.budget, grille, map, &|famille| {
+                    self.config.rollover_actif(famille)
+                });
                 if let Some(budget::ActionBudget::Cellule {
                     annee,
                     date,
@@ -576,40 +577,48 @@ impl App {
             return false;
         }
 
-        // Journal : flèches/Entrée/Suppr. La sélection navigue dans les
-        // MAX_LIGNES lignes affichées, pas dans tout l'historique. Les autres
-        // touches tombent dans les commandes globales ci-dessous.
-        if self.ecran_actif == Onglet::Journal.index()
-            && matches!(
-                key.code,
-                KeyCode::Up | KeyCode::Down | KeyCode::Enter | KeyCode::Delete | KeyCode::Backspace
-            )
-        {
-            let nb = self
+        // Journal : toutes les touches vont à on_key (filtres, pagination, navigation).
+        // Seules les commandes globales (q, r, l, Esc) restent globales.
+        if self.ecran_actif == Onglet::Journal.index() {
+            let lignes_filtrees: Vec<_> = self
                 .donnees
                 .as_ref()
-                .map_or(0, |d| d.journal.lignes.len().min(journal::MAX_LIGNES));
-            match journal::on_key(key, &mut self.journal, nb) {
+                .map(|d| {
+                    d.journal
+                        .lignes
+                        .iter()
+                        .filter(|l| self.journal.filtre.correspond(l))
+                        .collect()
+                })
+                .unwrap_or_default();
+            match journal::on_key(key, &mut self.journal, &lignes_filtrees) {
                 Some(journal::ActionJournal::Modifier(pos)) => {
-                    let ligne = self
-                        .donnees
-                        .as_ref()
-                        .and_then(|d| d.journal.lignes.get(pos))
-                        .cloned();
+                    let ligne = lignes_filtrees.get(pos).cloned();
                     if let Some(ligne) = ligne {
-                        self.saisie = crate::views::saisie::UiState::modification(&ligne);
+                        self.saisie = crate::views::saisie::UiState::modification(ligne);
                         self.ecran_actif = Onglet::Saisie.index();
                     }
                 }
                 Some(journal::ActionJournal::Supprimer(pos)) => {
                     self.confirmer_suppression(pos);
                 }
+                Some(journal::ActionJournal::RetourDashboard) => {
+                    self.changer_ecran(Onglet::TableauDeBord.index());
+                }
                 Some(journal::ActionJournal::Aucun) | None => {}
             }
             return false;
         }
 
-        // Commandes globales (hors écrans à champ texte).
+        // Panneau Ledger ouvert : Esc le ferme, autres touches ignorées.
+        if self.params_ledger {
+            if key.code == KeyCode::Esc {
+                self.params_ledger = false;
+            }
+            return false;
+        }
+
+        // Commandes globales (hors écrans à champ texte et hors panneau Ledger).
         match key.code {
             KeyCode::Char('q') => return true,
             KeyCode::Esc => {
@@ -659,10 +668,13 @@ impl App {
                 1
             };
             if self.ecran_actif == Onglet::Journal.index() {
-                let nb = self
-                    .donnees
-                    .as_ref()
-                    .map_or(0, |d| d.journal.lignes.len().min(journal::MAX_LIGNES));
+                let nb = self.donnees.as_ref().map_or(0, |d| {
+                    d.journal
+                        .lignes
+                        .iter()
+                        .filter(|l| self.journal.filtre.correspond(l))
+                        .count()
+                });
                 if delta < 0 {
                     self.journal.monter(nb);
                 } else {
@@ -711,6 +723,9 @@ impl App {
                                 self.ecran_actif = Onglet::Saisie.index();
                             }
                         }
+                        ActionClique::JournalFiltre(champ) => {
+                            self.journal.champ_filtre_actif = Some(champ);
+                        }
                         ActionClique::SaisieSelection(index) => {
                             self.saisie.posting_selectionne = index;
                             self.saisie.champ_actif = crate::views::saisie::Champ::Postings;
@@ -730,6 +745,38 @@ impl App {
                             self.en_chargement = true;
                             self.flash = None;
                             self.cmd_tx.send(Command::GitStatut).ok();
+                        }
+                        ActionClique::LedgerChoisir => {
+                            // Ouvrir sélecteur de fichier (rfd).
+                            if let Some(fichier) = rfd::FileDialog::new()
+                                .set_title("Choisir le main.beancount du vrai ledger")
+                                .add_filter("Beancount", &["beancount"])
+                                .add_filter("Tous", &["*"])
+                                .pick_file()
+                            {
+                                // Mettre à jour la config et la sauvegarder.
+                                self.config.chemin_ledger = Some(fichier.clone());
+                                if let Err(e) = self.config.sauver() {
+                                    self.notifier(format!("Erreur sauvegarde config : {e}"), true);
+                                } else {
+                                    self.notifier(
+                                        "Ledger configuré — relancez l'application pour l'utiliser",
+                                        false,
+                                    );
+                                }
+                            }
+                        }
+                        ActionClique::LedgerUtiliserExemple => {
+                            // Effacer la config pour revenir à l'exemple.
+                            self.config.chemin_ledger = None;
+                            if let Err(e) = self.config.sauver() {
+                                self.notifier(format!("Erreur sauvegarde config : {e}"), true);
+                            } else {
+                                self.notifier(
+                                    "Config effacée — l'exemple sera utilisé au prochain démarrage",
+                                    false,
+                                );
+                            }
                         }
                         ActionClique::Aucun => {}
                     }
@@ -753,6 +800,9 @@ impl App {
             }
             crate::views::journal::ActionJournal::Supprimer(index) => {
                 self.demander_suppression(index);
+            }
+            crate::views::journal::ActionJournal::RetourDashboard => {
+                self.changer_ecran(Onglet::TableauDeBord.index());
             }
             crate::views::journal::ActionJournal::Aucun => {}
         }
@@ -957,6 +1007,9 @@ impl App {
         if self.confirmation_suppression.is_some() {
             self.dessine_modal(f, f.size());
         }
+        if self.params_ledger {
+            self.dessine_panneau_ledger(f, f.size());
+        }
     }
 
     /// Modale de confirmation de suppression, superposée au contenu.
@@ -985,6 +1038,80 @@ impl App {
                 .style(style),
         );
         f.render_widget(modal, zone);
+    }
+
+    /// Panneau « Ledger actif » : affiche la résolution courante et permet
+    /// de choisir un autre ledger ou de revenir à l'exemple.
+    fn dessine_panneau_ledger(&mut self, f: &mut Frame, area: ratatui::layout::Rect) {
+        let zone = rect_centre(80, 16, area);
+        f.render_widget(Clear, zone);
+
+        let surcharge = self.resolu.source.surcharge_config();
+        let titre = if surcharge {
+            " Ledger actif (imposé) "
+        } else {
+            " Ledger actif "
+        };
+
+        let mut lignes: Vec<Line> = vec![];
+        lignes.push(Line::from(format!(" Chemin : {}", self.main.display())));
+        lignes.push(Line::from(format!(
+            " Source : {}",
+            self.resolu.source.libelle()
+        )));
+        if let Some(avertissement) = &self.resolu.avertissement {
+            lignes.push(
+                Line::from(format!(" ⚠ {avertissement} ")).style(
+                    Style::default()
+                        .fg(Color::Yellow)
+                        .add_modifier(Modifier::BOLD),
+                ),
+            );
+        }
+        lignes.push(Line::from(""));
+
+        if !surcharge {
+            lignes.push(Line::from(" [C] Choisir un main.beancount…"));
+            lignes.push(Line::from(
+                " [E] Utiliser le ledger d'exemple (efface la config)",
+            ));
+        } else {
+            lignes.push(Line::from(
+                " Ce ledger est imposé (argument CLI ou RPA_LEDGER).",
+            ));
+            lignes.push(Line::from(" La configuration locale est ignorée."));
+        }
+        lignes.push(Line::from(""));
+        lignes.push(Line::from(" [Échap] Fermer ce panneau"));
+
+        let style = Style::default().fg(Color::White).bg(Color::DarkGray);
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .title(titre)
+            .style(style);
+        let paragraph = Paragraph::new(lignes).block(block).style(style);
+        f.render_widget(paragraph, zone);
+
+        // Zones cliquables pour les boutons (si pas en surcharge).
+        if !surcharge {
+            // Bouton "Choisir" : ligne 4 du contenu (zone.y + 1 titre + 1 bordure + 2 lignes + 1 vide)
+            let btn_choisir_y = zone.y + 5;
+            self.zones_cliquables.push((
+                Rect::new(zone.x + 2, btn_choisir_y, zone.width - 4, 1),
+                ActionClique::LedgerChoisir,
+            ));
+            // Bouton "Exemple" : ligne 5
+            let btn_exemple_y = zone.y + 6;
+            self.zones_cliquables.push((
+                Rect::new(zone.x + 2, btn_exemple_y, zone.width - 4, 1),
+                ActionClique::LedgerUtiliserExemple,
+            ));
+        }
+        // Zone pour fermer (clic n'importe où dans le panneau = ferme, ou touche Échap).
+        self.zones_cliquables.push((
+            zone,
+            ActionClique::Aucun, // Clic dans le panneau = ne fait rien (fermé par Échap ou clic hors zone)
+        ));
     }
 
     fn dessine_entete(&self, f: &mut Frame, area: ratatui::layout::Rect) {

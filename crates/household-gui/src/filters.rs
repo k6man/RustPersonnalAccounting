@@ -105,6 +105,15 @@ pub struct Pagination {
     pub par_page: usize,
 }
 
+impl Default for Pagination {
+    fn default() -> Self {
+        Self {
+            page: 0,
+            par_page: 100,
+        }
+    }
+}
+
 impl Pagination {
     /// Nombre de pages (≥ 1, même pour un journal vide).
     #[must_use]

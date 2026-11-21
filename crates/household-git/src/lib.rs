@@ -1,7 +1,7 @@
 //! Opérations git sur le dépôt du ledger, via **git2** (libgit2 en
-//! processus — pas de binaire `git`, cf. ADR-001).
+//! processus — pas de binaire `git`, cf. ADR-002).
 //!
-//! ⚠ **Choix documenté (ADR-001)** : git2 n'exécute pas les hooks ; la
+//! ⚠ **Choix documenté (ADR-002)** : git2 n'exécute pas les hooks ; la
 //! validation du ledger **avant** commit est faite côté application
 //! (worker : `Snapshot::load` sans erreur), en complément du hook
 //! pre-commit qui couvre les commits passant par la CLI.

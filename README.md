@@ -1,7 +1,7 @@
 # Comptabilité du foyer
 
 Comptabilité personnelle de foyer (couple + 2 enfants, EUR) fondée sur **Beancount**,
-moteur **rustledger** (implémentation Rust), suivi **git** natif, et une GUI **egui/eframe**.
+moteur **rustledger** (implémentation Rust), suivi **git** natif, et une TUI **ratatui/crossterm**.
 
 > **Suivi du projet** : voir [`TODO.md`](TODO.md) — état courant, jalons, décisions.
 > C'est le point d'entrée pour reprendre le travail à froid.
@@ -108,7 +108,7 @@ croyant écrire dans le vrai ledger).
   /household-core           # wrapper rustledger : load, snapshot, resolution, writer transactions (atomique)
   /household-budget         # budget pur : grille postes×12 mois, rollover, duplication d'année
   /household-git            # git2 : statut, commit (avec revalidation), historique
-  /household-gui            # eframe/egui : état applicatif / commandes worker / vues
+  /household-gui            # ratatui/crossterm : état applicatif / commandes worker / vues
 /docs                       # ADR (décisions d'architecture)
 ```
 
