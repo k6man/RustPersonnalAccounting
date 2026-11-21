@@ -1982,3 +1982,37 @@ fn import_a_profils_predefinis_dans_exemple() {
     // Nettoyer le scratch
     cleanup(main.parent().unwrap().parent().unwrap());
 }
+
+#[test]
+fn import_profil_defaut_bnp() {
+    use common::{cleanup, ledger_copy};
+    let main = ledger_copy();
+    let mut etat = import::UiState {
+        profil_defaut: Some("bnp-csv".to_string()),
+        ..Default::default()
+    };
+    // Charger les profils
+    etat.charger_profils(&main);
+    // Vérifier que bnp-csv est sélectionné (index 3 dans l'exemple)
+    let profil_selectionne = etat.profil_actuel().expect("profil sélectionné");
+    assert_eq!(profil_selectionne.name, "bnp-csv");
+    // Nettoyer le scratch
+    cleanup(main.parent().unwrap().parent().unwrap());
+}
+
+#[test]
+fn import_profil_defaut_absent_fallback() {
+    use common::{cleanup, ledger_copy};
+    let main = ledger_copy();
+    let mut etat = import::UiState {
+        profil_defaut: Some("profil-inexistant".to_string()),
+        ..Default::default()
+    };
+    // Charger les profils
+    etat.charger_profils(&main);
+    // Vérifier le fallback vers le premier profil (credit-mutuel-csv)
+    let profil_selectionne = etat.profil_actuel().expect("profil sélectionné");
+    assert_eq!(profil_selectionne.name, "credit-mutuel-csv");
+    // Nettoyer le scratch
+    cleanup(main.parent().unwrap().parent().unwrap());
+}

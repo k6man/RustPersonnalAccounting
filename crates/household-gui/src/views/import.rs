@@ -64,6 +64,9 @@ pub struct UiState {
     pub detecter_doublons: bool,
     /// Activer la suggestion de catégories ML (--suggest-categories).
     pub suggérer_catégories: bool,
+    /// Profil d'import par défaut configuré dans les préférences (nom du profil).
+    /// Utilisé au chargement pour pré-sélectionner le bon profil.
+    pub profil_defaut: Option<String>,
 }
 
 impl UiState {
@@ -72,7 +75,17 @@ impl UiState {
         let (config, resolution) = charger_importers_pour_ledger(main);
         self.profils = config.importers;
         self.resolution = Some(resolution);
-        if self.profil_selectionne >= self.profils.len() {
+
+        // Si un profil par défaut est configuré, essayer de le sélectionner
+        if let Some(ref defaut) = self.profil_defaut {
+            if let Some(pos) = self.profils.iter().position(|p| p.name == *defaut) {
+                self.profil_selectionne = pos;
+            } else {
+                // Profil par défaut introuvable → fallback sur le premier
+                self.profil_selectionne = 0;
+            }
+        } else if self.profil_selectionne >= self.profils.len() {
+            // Aucun profil par défaut → premier profil
             self.profil_selectionne = 0;
         }
     }

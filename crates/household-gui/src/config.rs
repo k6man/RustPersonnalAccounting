@@ -23,6 +23,10 @@ pub struct Config {
     /// exemple du dépôt). Absent = aucun vrai ledger configuré.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub chemin_ledger: Option<PathBuf>,
+    /// Profil d'import par défaut (nom du profil dans `importers.toml`,
+    /// ex: `"bnp-csv"`). Absent = premier profil de la liste.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub profil_import_defaut: Option<String>,
     /// Rollover activé par famille de postes (clé = compte de tête, ex.
     /// `Expenses:Enfants`). Absent = désactivé.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -199,6 +203,7 @@ mod tests {
         let mut config = Config::default();
         config.rollover.insert("Expenses:Enfants".to_string(), true);
         config.rollover.insert("Assets:Epargne".to_string(), true);
+        config.profil_import_defaut = Some("bnp-csv".to_string());
 
         let chemin = chemin_temporaire("test");
         config.sauver_vers(Some(&chemin)).expect("sauvegarde");
@@ -206,6 +211,7 @@ mod tests {
         assert_eq!(relu.rollover, config.rollover);
         assert!(relu.rollover_actif("Expenses:Enfants"));
         assert!(!relu.rollover_actif("Expenses:Transport"));
+        assert_eq!(relu.profil_import_defaut, Some("bnp-csv".to_string()));
         let _ = std::fs::remove_file(&chemin);
     }
 
@@ -240,6 +246,20 @@ mod tests {
         config.sauver_vers(Some(&chemin)).expect("sauvegarde");
         let relu = Config::charger_de(Some(&chemin));
         assert_eq!(relu.chemin_ledger, config.chemin_ledger);
+        let _ = std::fs::remove_file(&chemin);
+    }
+
+    #[test]
+    fn profil_import_defaut_round_trip() {
+        let config = Config {
+            profil_import_defaut: Some("bnp-csv".to_string()),
+            ..Config::default()
+        };
+
+        let chemin = chemin_temporaire("profil-defaut");
+        config.sauver_vers(Some(&chemin)).expect("sauvegarde");
+        let relu = Config::charger_de(Some(&chemin));
+        assert_eq!(relu.profil_import_defaut, Some("bnp-csv".to_string()));
         let _ = std::fs::remove_file(&chemin);
     }
 

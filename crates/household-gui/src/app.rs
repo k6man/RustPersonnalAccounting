@@ -167,7 +167,7 @@ impl App {
             ecran_actif = onglet.index();
         }
 
-        let app = Self {
+        let mut app = Self {
             main,
             resolu,
             cmd_tx,
@@ -193,6 +193,9 @@ impl App {
             config: crate::config::Config::charger(),
             zones_cliquables: Vec::new(),
         };
+
+        // Propager le profil d'import par défaut depuis la config vers l'écran Import
+        app.import.profil_defaut = app.config.profil_import_defaut.clone();
 
         if app.ecran_actif == Onglet::Git.index() {
             app.cmd_tx.send(Command::GitStatut).ok();
