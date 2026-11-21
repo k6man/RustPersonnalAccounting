@@ -19,7 +19,7 @@ documentée dans le README racine (§ « Utiliser avec votre vrai ledger ») :
 
 1. argument de la ligne de commande (`compta-foyer /chemin/main.beancount`) ;
 2. variable d'environnement `RPA_LEDGER` ;
-3. champ `chemin_ledger` de `~/.config/rust-personal-accounting.toml` ;
+3. champ `chemin_ledger` de `~/.config/RustPersonnalAccounting/config.toml` ;
 4. à défaut : cet exemple (avec un avertissement « données fictives » dans
    l'interface).
 

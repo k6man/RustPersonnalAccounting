@@ -392,7 +392,7 @@ fn render_entete(f: &mut Frame, etat: &mut UiState, area: Rect) {
     if let Some(res) = resolution {
         let source_label = match res.source {
             SourceImporters::RacineLedger => "racine du ledger",
-            SourceImporters::ConfigLocale => "~/.config/rust-personal-accounting/",
+            SourceImporters::ConfigLocale => "~/.config/RustPersonnalAccounting/",
             SourceImporters::Aucun => "aucun",
         };
         let chemin = res

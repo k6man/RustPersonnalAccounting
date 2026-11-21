@@ -95,7 +95,7 @@ de dépendance sans effet de comportement. **En cas de doute, ouvrez un change.*
 - **Le vrai ledger du foyer vit hors du dépôt** : dépôt git **séparé**
   (ADR-004), `main.beancount` à sa racine. Il est désigné par la chaîne de
   résolution `household-core::resolution` : argument CLI > `RPA_LEDGER` >
-  champ `chemin_ledger` de `~/.config/rust-personal-accounting.toml` > repli
+  champ `chemin_ledger` de `~/.config/RustPersonnalAccounting/config.toml` > repli
   sur l'exemple avec badge. Après création de ce dépôt :
   `just setup-ledger <dossier-du-ledger>` attache une fois pour toutes le
   hook `pre-commit` commun (le hook auto-détecte le point d'entrée dans le
@@ -151,8 +151,7 @@ de dépendance sans effet de comportement. **En cas de doute, ouvrez un change.*
   coordonnées magiques. `COMPTA_ECRAN=<ecran>` ouvre seulement l'écran
   demandé (affordance de test/captures).
 - Préférences app (chemin du vrai ledger, rollover par famille) :
-  `~/.config/rust-personal-accounting.toml` (migré depuis `compta-foyer.toml`,
-  v0.1), **jamais dans le ledger**.
+  `~/.config/RustPersonnalAccounting/config.toml`, **jamais dans le ledger**.
 
 ## Pièges ratatui 0.26 / crossterm 0.27
 

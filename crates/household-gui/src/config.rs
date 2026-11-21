@@ -1,12 +1,7 @@
 //! Préférences GUI persistées **hors ledger** (docs/ADR-005, décision 5) : un fichier TOML
-//! local — `~/.config/rust-personal-accounting.toml` — ne contient que des
+//! local — `~/.config/RustPersonnalAccounting/config.toml` — ne contient que des
 //! réglages applicatifs (chemin du vrai ledger, rollover par famille…).
 //! Le ledger reste la seule source de vérité des données.
-//!
-//! Migration (2026-11-07) : l'ancien `~/.config/compta-foyer.toml` (v0.1) est
-//! lu en repli si le nouveau n'existe pas ; son contenu est re-persisté dans
-//! le nouveau fichier à la première sauvegarde. L'ancien fichier n'est
-//! jamais supprimé automatiquement.
 
 use std::collections::BTreeMap;
 use std::fs::{self, File};
@@ -45,18 +40,8 @@ impl Config {
         std::env::var_os("HOME").map(|home| {
             PathBuf::from(home)
                 .join(".config")
-                .join("rust-personal-accounting.toml")
-        })
-    }
-
-    /// Ancien emplacement (v0.1) : lu uniquement si le nouveau est absent
-    /// (migration douce, jamais supprimé automatiquement).
-    #[must_use]
-    pub fn ancien_chemin() -> Option<PathBuf> {
-        std::env::var_os("HOME").map(|home| {
-            PathBuf::from(home)
-                .join(".config")
-                .join("compta-foyer.toml")
+                .join("RustPersonnalAccounting")
+                .join("config.toml")
         })
     }
 
@@ -64,34 +49,7 @@ impl Config {
     /// (l'interface doit toujours démarrer, jamais planter sur une config).
     #[must_use]
     pub fn charger() -> Self {
-        Self::charger_avec(Self::chemin().as_deref(), Self::ancien_chemin().as_deref())
-    }
-
-    /// Variante testable : nouveau fichier et ancien (migration) injectés.
-    /// Le nouveau est retenu comme chemin d'enregistrement ; l'ancien n'est
-    /// lu que si le nouveau n'existe pas, et un chargement via l'ancien
-    /// re-pointe l'enregistrement vers le nouveau (migration au premier
-    /// `sauver`).
-    #[must_use]
-    pub fn charger_avec(
-        nouveau: Option<&std::path::Path>,
-        ancien: Option<&std::path::Path>,
-    ) -> Self {
-        if let Some(chemin) = nouveau
-            && chemin.exists()
-        {
-            return Self::charger_de(Some(chemin));
-        }
-        if let Some(ancien) = ancien
-            && ancien.exists()
-        {
-            // Migration : contenu de l'ancien, mais enregistrement vers
-            // le nouveau (l'ancien n'est jamais supprimé ni réécrit).
-            let mut config = Self::charger_de(Some(ancien));
-            config.chemin_charge = nouveau.map(PathBuf::from);
-            return config;
-        }
-        Self::charger_de(nouveau)
+        Self::charger_de(Self::chemin().as_deref())
     }
 
     /// Variante testable (chemin injecté) : retenu comme chemin d'enregistrement.
@@ -119,7 +77,7 @@ impl Config {
         config
     }
 
-    /// Persiste les préférences (crée `~/.config/` au besoin). Erreur
+    /// Persiste les préférences (crée `~/.config/RustPersonnalAccounting/` au besoin). Erreur
     /// retournée pour l'affichage (flash) — jamais de panique.
     pub fn sauver(&self) -> Result<(), String> {
         self.sauver_vers(self.chemin_charge.as_deref().or(Self::chemin().as_deref()))
@@ -142,7 +100,7 @@ impl Config {
         // afin qu'un crash ou une coupure ne laisse jamais un TOML tronqué
         // (et donc des préférences écrasées sans trace).
         // Compteur atomique : plusieurs écritures de config dans le même
-        // processus ne doivent pas colliser sur le même nom temporaire.
+        // processus ne doivent pas collider sur le même nom temporaire.
         let tmp_suffix = {
             static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
             SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
@@ -261,65 +219,5 @@ mod tests {
         let relu = Config::charger_de(Some(&chemin));
         assert_eq!(relu.profil_import_defaut, Some("bnp-csv".to_string()));
         let _ = std::fs::remove_file(&chemin);
-    }
-
-    #[test]
-    fn migration_lit_ancien_fichier_et_donne_le_nouveau_comme_cible() {
-        // Nouveau absent, ancien présent : contenu repris, enregistrement migré.
-        let nouveau = chemin_temporaire("nouveau"); // volontairement non écrit
-        let ancien = chemin_temporaire("ancien");
-        std::fs::write(&ancien, "rollover = { \"Expenses:Enfants\" = true }").unwrap();
-
-        let config = Config::charger_avec(Some(&nouveau), Some(&ancien));
-        assert!(config.rollover_actif("Expenses:Enfants"));
-        assert_eq!(config.chemin_charge, Some(nouveau.clone()));
-        assert!(config.chemin_ledger.is_none());
-        // L'ancien n'est jamais supprimé ni réécrit automatiquement.
-        assert!(ancien.exists());
-        let _ = std::fs::remove_file(&nouveau);
-        let _ = std::fs::remove_file(&ancien);
-    }
-
-    #[test]
-    fn migration_nouveau_prioritaire_sil_existe() {
-        // Les deux existent : le nouveau gagne, l'ancien n'est même pas lu.
-        let nouveau = chemin_temporaire("nouveau-existe");
-        let ancien = chemin_temporaire("ancien-existe");
-        std::fs::write(&nouveau, "rollover = { \"Assets:Epargne\" = true }").unwrap();
-        std::fs::write(&ancien, "rollover = { \"Expenses:Enfants\" = true }").unwrap();
-
-        let config = Config::charger_avec(Some(&nouveau), Some(&ancien));
-        assert!(config.rollover_actif("Assets:Epargne"));
-        assert!(!config.rollover_actif("Expenses:Enfants"));
-        assert_eq!(config.chemin_charge, Some(nouveau.clone()));
-        let _ = std::fs::remove_file(&nouveau);
-        let _ = std::fs::remove_file(&ancien);
-    }
-
-    #[test]
-    fn contenu_migre_re_persiste_dans_le_nouveau() {
-        let nouveau = chemin_temporaire("nouveau-sauvegarde");
-        let ancien = chemin_temporaire("ancien-sauvegarde");
-        std::fs::write(
-            &ancien,
-            "rollover = { \"Assets:Epargne\" = true }\nchemin_ledger = \"/vrai/main.beancount\"\n",
-        )
-        .unwrap();
-
-        let mut config = Config::charger_avec(Some(&nouveau), Some(&ancien));
-        assert_eq!(
-            config
-                .chemin_ledger
-                .clone()
-                .map(|p| p.to_string_lossy().into_owned()),
-            Some("/vrai/main.beancount".to_string())
-        );
-        config
-            .basculer_rollover("Assets:Epargne")
-            .expect("bascule déclenche la sauvegarde");
-        let texte = std::fs::read_to_string(&nouveau).expect("nouveau fichier créé");
-        assert!(texte.contains("/vrai/main.beancount"), "{texte}");
-        let _ = std::fs::remove_file(&nouveau);
-        let _ = std::fs::remove_file(&ancien);
     }
 }

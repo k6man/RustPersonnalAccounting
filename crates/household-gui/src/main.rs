@@ -2,7 +2,7 @@
 //!
 //! Usage : `compta-foyer [chemin/vers/main.beancount]` — sinon, chaîne de
 //! résolution standard (variable `RPA_LEDGER`, puis champ `chemin_ledger` du
-//! fichier de préférences `~/.config/rust-personal-accounting.toml`, puis le
+//! fichier de préférences `~/.config/RustPersonnalAccounting/config.toml`, puis le
 //! ledger d'exemple du dépôt avec badge « données fictives »).
 //! Pour du test : `COMPTA_ECRAN=journal|saisie|budget|rapports|graphiques|git`
 //! ouvre l'écran correspondant au démarrage (sans le tableau de bord),

@@ -52,7 +52,7 @@ vrai ledger du foyer vit hors de ce dépôt, dans sa propre arborescence
 1. **argument** : `cargo run -p household-gui -- /chemin/vrai/main.beancount`
    (ou `household-cli check /chemin/vrai/main.beancount`) ;
 2. **variable d'environnement** : `RPA_LEDGER=/chemin/vrai/main.beancount` ;
-3. **fichier de préférences** : dans `~/.config/rust-personal-accounting.toml` :
+3. **fichier de préférences** : dans `~/.config/RustPersonnalAccounting/config.toml` :
 
    ```toml
    chemin_ledger = "/chemin/vrai/main.beancount"

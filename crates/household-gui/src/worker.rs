@@ -758,7 +758,7 @@ fn importer(
         Some(p) => p,
         None => {
             return LoadOutcome::Refuse(
-                "aucun importers.toml trouvé (racine du ledger ni ~/.config/rust-personal-accounting/)".to_string(),
+                "aucun importers.toml trouvé (racine du ledger ni ~/.config/RustPersonnalAccounting/)".to_string(),
             );
         }
     };

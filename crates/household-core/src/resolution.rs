@@ -6,7 +6,7 @@
 //!
 //! 1. argument explicite (`compta-foyer <chemin>`, `household-cli <chemin>`) ;
 //! 2. variable d'environnement [`VAR_ENV`] (`RPA_LEDGER`) ;
-//! 3. champ `chemin_ledger` de `~/.config/rust-personal-accounting.toml`
+//! 3. champ `chemin_ledger` de `~/.config/RustPersonnalAccounting/config.toml`
 //!    (lu par la couche appelante — ici, la config de la GUI) ;
 //! 4. repli : ledger d'exemple du dépôt ([`EXEMPLE_RELATIF`], mode
 //!    [`ModeLedger::Exemple`] — l'interface affiche alors le badge

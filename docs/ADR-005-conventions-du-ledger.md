@@ -30,7 +30,7 @@ budgétée.
 
 ### 5. Préférences de l'application hors du ledger
 Le ledger est la seule source de vérité des données. Les réglages de l'application (chemin du vrai ledger,
-rollover par famille…) vivent dans `~/.config/rust-personal-accounting.toml`, jamais dans le ledger.
+rollover par famille…) vivent dans `~/.config/RustPersonnalAccounting/config.toml`, jamais dans le ledger.
 
 ## Conséquences
 

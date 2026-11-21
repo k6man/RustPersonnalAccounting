@@ -13,14 +13,6 @@ famille) et MUST NOT écrire de préférences dans le ledger.
 - **WHEN** l'utilisateur active le rollover pour une famille
 - **THEN** le réglage est persisté dans le TOML local
 
-### Requirement: Migration de l'ancien fichier
-Le système SHALL lire `~/.config/compta-foyer.toml` en repli si le nouveau n'existe pas, le re-persister
-dans le nouveau fichier à la première sauvegarde, et ne jamais supprimer l'ancien.
-
-#### Scenario: Seul l'ancien fichier existe
-- **WHEN** le nouveau fichier est absent
-- **THEN** les valeurs de l'ancien sont chargées
-
 ### Requirement: Écriture atomique et démarrage tolérant
 Le système SHALL écrire via temporaire caché, `sync_all` puis rename ; un TOML corrompu produit un
 diagnostic et les valeurs par défaut, et l'application démarre toujours.

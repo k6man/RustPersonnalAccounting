@@ -7,7 +7,7 @@ Choisir quel ledger ouvrir, le charger, savoir s'il s'agit des données fictives
 
 ### Requirement: Chaîne de résolution par priorité
 Le système SHALL résoudre le ledger actif selon l'ordre : argument explicite, variable
-d'environnement `RPA_LEDGER`, champ `chemin_ledger` de `~/.config/rust-personal-accounting.toml`,
+d'environnement `RPA_LEDGER`, champ `chemin_ledger` de `~/.config/RustPersonnalAccounting/config.toml`,
 puis repli sur `examples/ledger/main.beancount`. Le premier chemin *configuré* gagne, qu'il existe ou non.
 
 #### Scenario: L'argument prime sur tout

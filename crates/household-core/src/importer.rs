@@ -9,7 +9,7 @@
 //!
 //! Ordre de recherche (le premier existant gagne) :
 //!   1. `importers.toml` à la racine du ledger (à côté de `main.beancount`) ;
-//!   2. `~/.config/rust-personal-accounting/importers.toml` ;
+//!   2. `~/.config/RustPersonnalAccounting/importers.toml` ;
 //!   3. Aucun fichier (retourne config vide — `rledger extract` utilisera ses
 //!      moteurs intégrés CSV/OFX sans profils nommés).
 
@@ -129,7 +129,7 @@ impl ResolutionImporters {
 pub enum SourceImporters {
     /// Fichier `importers.toml` à la racine du ledger (à côté de main.beancount).
     RacineLedger,
-    /// Fichier `~/.config/rust-personal-accounting/importers.toml`.
+    /// Fichier `~/.config/RustPersonnalAccounting/importers.toml`.
     ConfigLocale,
     /// Aucun fichier trouvé (config vide).
     Aucun,
@@ -140,7 +140,7 @@ impl SourceImporters {
     pub fn libelle(self) -> &'static str {
         match self {
             Self::RacineLedger => "importers.toml à la racine du ledger",
-            Self::ConfigLocale => "~/.config/rust-personal-accounting/importers.toml",
+            Self::ConfigLocale => "~/.config/RustPersonnalAccounting/importers.toml",
             Self::Aucun => "aucun (config vide, moteurs intégrés rledger)",
         }
     }
@@ -164,11 +164,11 @@ pub fn resoudre_importers(chemin_ledger: &Path) -> ResolutionImporters {
         }
     }
 
-    // 2. ~/.config/rust-personal-accounting/importers.toml
+    // 2. ~/.config/RustPersonnalAccounting/importers.toml
     if let Some(home) = std::env::var_os("HOME") {
         let candidat = PathBuf::from(home)
             .join(".config")
-            .join("rust-personal-accounting")
+            .join("RustPersonnalAccounting")
             .join("importers.toml");
         if candidat.exists() {
             return ResolutionImporters {

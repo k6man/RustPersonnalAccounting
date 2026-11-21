@@ -24,7 +24,7 @@ voies :
    arborescence, son propre historique), référencé par la chaîne de
    résolution partagée `household_core::resolution` (argument CLI >
    `RPA_LEDGER` > champ `chemin_ledger` de
-   `~/.config/rust-personal-accounting.toml` > repli sur l'exemple avec
+   `~/.config/RustPersonnalAccounting/config.toml` > repli sur l'exemple avec
    badge). Convention de forme : un `main.beancount` à la racine du dépôt
    qui inclut le reste (même canon que l'exemple).
 
