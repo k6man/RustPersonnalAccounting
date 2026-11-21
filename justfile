@@ -44,7 +44,10 @@ check-ledger:
       cargo run -q -p household-core --bin household-cli -- check examples/ledger/main.beancount; \
     fi
 
-check: fmt-check clippy test check-ledger
+openspec-validate:
+    openspec validate --all
+
+check: fmt-check clippy test check-ledger openspec-validate
 
 build:
     cargo build --workspace

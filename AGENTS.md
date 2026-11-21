@@ -3,6 +3,9 @@
 Point d'entrée « reprise à froid » : **`TODO.md`** (état des jalons, décisions, écarts d'API
 trouvés en chemin). Décisions d'architecture : `docs/ADR-00*.md`. **Lisez TODO.md avant
 toute modification** — l'état courant et la prochaine action y sont toujours à jour.
+Comportements attendus du logiciel : **`openspec/`** (specs par parcours utilisateur et
+changes en cours) — voir la section « OpenSpec » plus bas. Ordre de reprise à froid :
+`TODO.md`, puis `openspec list` (changes ouverts), puis la spec de la capability concernée.
 
 ## Commandes de validation (toutes obligatoires avant chaque commit)
 
@@ -12,11 +15,75 @@ just run            # TUI (cargo run -p household-gui)
 cargo test -p household-gui --test gui_tui                # tous les tests TUI
 cargo test -p household-gui --test budget_gui grille_2026 # un seul test
 cargo run -q -p household-core --bin household-cli -- check examples/ledger/main.beancount  # repli si rledger absent
+openspec validate --all --strict   # specs et changes valides (contrôle de forme uniquement)
 ```
 
 - Clippy et tests doivent être verts avec `-D warnings` ; `unsafe_code = "forbid"` (lints workspace).
 - **`just setup` à faire après un clone** : active `githooks/` (pre-commit valide le ledger).
 - CI (`.github/workflows/ci.yml`) rejoue fmt, clippy, tests et `rledger check` sur main/develop.
+
+## OpenSpec — comportements attendus et changes
+
+Deux sources complémentaires, **à ne pas dupliquer** : `TODO.md` = état des jalons et prochaine
+action ; `openspec/` = **ce que le logiciel doit faire** (specs) et les évolutions en cours (changes).
+Un jalon de `TODO.md` qui implémente un change cite son identifiant.
+
+- `openspec/project.md` : contexte, conventions, carte parcours → capability → crate.
+- `openspec/specs/<capability>/spec.md` : 10 capabilities **par parcours utilisateur** — ouvrir-ledger,
+  naviguer-application, consulter-tableau-de-bord, parcourir-journal, saisir-transaction,
+  garantir-integrite-ecritures, piloter-budget, analyser-annee, valider-et-versionner,
+  regler-application. Reconstruites à partir du code (backfill) : elles décrivent le comportement
+  **actuel**, pas forcément l'intention d'origine.
+- `openspec/changes/<id>/` : évolutions proposées (`proposal.md`, `tasks.md`, deltas de specs).
+- `openspec/GAPS.md` : écarts connus entre specs, code et documentation — à traiter, pas à ignorer.
+- Si un bloc géré par OpenSpec (balises `<!-- OPENSPEC:START -->` … `<!-- OPENSPEC:END -->`) est présent
+  dans ce fichier, il est réécrit par `openspec update` : ne l'éditez pas, ajoutez les règles en dehors.
+
+### Quand un change est obligatoire (avant d'écrire du code)
+
+- Nouvelle capacité ou nouveau comportement visible de l'utilisateur.
+- Modification d'un comportement existant, y compris une règle de validation ou d'écriture.
+- Changement du format du ledger écrit, des fichiers de budget ou du TOML de préférences.
+- Tout ce qui touche `garantir-integrite-ecritures`.
+
+Pas de change : correction d'un bug qui rétablit un comportement **déjà spécifié** (ajoutez le test de
+non-régression), refactor sans effet observable, typos / commentaires / docs, tests seuls, mise à jour
+de dépendance sans effet de comportement. **En cas de doute, ouvrez un change.**
+
+### Workflow
+
+1. Lire `TODO.md`, puis `openspec list` et `openspec list --specs` ; `openspec show <capability>` pour une spec.
+2. Proposer : créer `openspec/changes/<id>/` (`<id>` en kebab-case, descriptif) avec `proposal.md`,
+   `tasks.md` et les deltas de specs. **S'arrêter et demander la relecture humaine : ne pas coder
+   tant que le change n'est pas approuvé.**
+3. Implémenter les tâches de `tasks.md` dans l'ordre, les cocher au fur et à mesure, `just check` à chaque étape.
+4. `openspec validate <id> --strict`.
+5. Archiver : `openspec archive <id>` (fusionne les deltas dans `specs/`), puis
+   `openspec validate --all --strict`.
+
+### Format des specs (le validateur est strict)
+
+- `### Requirement: <nom>` suivi d'une phrase contenant **SHALL** ou **MUST** ; au moins un
+  `#### Scenario: <nom>` par requirement, écrit en `- **WHEN** …` / `- **THEN** …` (`AND` possible).
+- Mots-clés structurels en anglais (Requirement, Scenario, WHEN, THEN, SHALL, MUST, ADDED, MODIFIED,
+  REMOVED) ; le contenu est en français, comme le reste du dépôt.
+- Dans un delta, `## MODIFIED Requirements` recopie le requirement **complet**, avec **tous** ses
+  scénarios : un scénario omis disparaît à l'archive.
+- Un requirement = un comportement vérifiable. Pas de détail d'implémentation (noms de fonctions, de
+  crates) : il va dans `design.md` ou dans `openspec/project.md`.
+
+### Cohérence specs ↔ code ↔ tests
+
+- Ne modifiez pas `openspec/specs/` à la main pour « faire coller » : un écart est soit un bug du code,
+  soit une spec fausse. Dans les deux cas, ouvrez un change (le delta corrige la spec ou la tâche
+  corrige le code).
+- Chaque `#### Scenario` doit avoir un test. Convention : un commentaire
+  `// spec: <capability>/<Requirement>/<Scenario>` au-dessus du test. Un scénario sans test est une
+  dette à lister dans le change.
+- `garantir-integrite-ecritures` est transversale : tout nouveau chemin d'écriture (import, nouvelle
+  vue) passe par les writers existants et respecte ses scénarios.
+- Les conventions non négociables ci-dessous (Decimal, dates, langue, rustledger épinglé) s'appliquent
+  aussi aux changes et à leur code.
 
 ## Le ledger d'exemple vs le vrai ledger du foyer
 
@@ -116,6 +183,8 @@ cargo run -q -p household-core --bin household-cli -- check examples/ledger/main
 
 - Branche de travail : `develop` (le jalon courant est committé là avec TODO.md à jour
   dans le même commit). Tag `v0.1.0` existe ; push non encore effectué.
+- Un change : proposal, tasks et deltas de specs committés **avant** le code ; `openspec archive`
+  dans le dernier commit du change, avec `TODO.md` à jour. Message : `Change <id> — <titre>`.
 - Message type pour le ledger : `ledger: AAAA-MM — saisie/édition (N fichiers)`
   (`household_git::suggere_message`). Commits de jalon : `Jalon N — <titre>`.
 
